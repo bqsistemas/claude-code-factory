@@ -787,7 +787,7 @@ main {
 }
 
 .iso-scene .iso-label.iso-trail {
-  fill: var(--iso-accent-dim);
+  fill: var(--iso-ink);
 }
 
 .iso-scene .iso-preview .iso-face,
@@ -826,7 +826,11 @@ main {
   display: block;
   margin-left: 1.5rem;
   color: var(--iso-ink);
-  font-size: 0.8em;
+  font-size: 0.8rem;
+}
+
+.game__picker input[type='radio'] {
+  accent-color: var(--iso-accent);
 }
 
 .game__picker input[type='radio']:focus-visible {
