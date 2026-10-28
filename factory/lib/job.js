@@ -20,7 +20,7 @@ import { gate as runGate } from './gate.js';
 import { parseIntake } from './intake.js';
 import { route } from './route.js';
 import {
-  JOB_ID, Refused, Usage, factoryRoot, firstLine, isMain, jobDir, loadConfig, mustRun, now, readText, run,
+  JOB_ID, Refused, Usage, configLanguage, factoryRoot, firstLine, isMain, jobDir, loadConfig, mustRun, now, readText, run,
   runCli, transcriptsDir, writeAtomic,
 } from './util.js';
 
@@ -35,7 +35,8 @@ const ESCALATABLE = ['intake', 'spec', 'build', 'gate', 'review', 'approve', 'me
 
 function context() {
   const root = factoryRoot();
-  return { root, config: loadConfig(root), gh: process.env.FACTORY_GH || 'gh' };
+  const config = loadConfig(root);
+  return { root, config, lang: configLanguage(config), gh: process.env.FACTORY_GH || 'gh' };
 }
 
 const file = (c, job, rel) => join(jobDir(c.root, job.id), rel);
@@ -63,7 +64,7 @@ function allJobs(root) {
 }
 
 function writeBoard(c) {
-  const board = { updated: now(), repo: c.config.repo ?? null, jobs: allJobs(c.root) };
+  const board = { updated: now(), repo: c.config.repo ?? null, language: c.lang, jobs: allJobs(c.root) };
   writeAtomic(join(c.root, 'factory/board.json'), `${JSON.stringify(board, null, 2)}\n`);
 }
 
@@ -211,17 +212,73 @@ const INTAKE_NEXT = {
   REJECT: 'The factory will not build this issue. Please close it; open a new issue if the request changes.',
 };
 
+const INTAKE_NEXT_LANG = {
+  es: {
+    ACCEPT: 'La factory escribirá un spec, lo construirá en una rama y abrirá un PR en borrador que cierra este issue.',
+    'NEEDS-INFO': 'Por favor respondé en este issue. La factory toma tu respuesta en su próxima ejecución.',
+    REJECT: 'La factory no va a construir este issue. Por favor cerralo; abrí uno nuevo si cambia el pedido.',
+  },
+  pt: {
+    ACCEPT: 'A factory vai escrever um spec, construir em uma branch e abrir um PR em rascunho que fecha este issue.',
+    'NEEDS-INFO': 'Por favor responda neste issue. A factory pega a sua resposta na próxima execução.',
+    REJECT: 'A factory não vai construir este issue. Por favor feche-o; abra um novo se o pedido mudar.',
+  },
+};
+
+const intakeTitle = {
+  en: (id, d) => `**Factory intake** for job \`${id}\`: **${d}**`,
+  es: (id, d) => `**Intake de la factory** para el job \`${id}\`: **${d}**`,
+  pt: (id, d) => `**Intake da factory** para o job \`${id}\`: **${d}**`,
+};
+
+const intakeBody = (lang) => ({ id, decision, header, rest }) => [
+  marker('intake', id),
+  intakeTitle[lang](id, decision), '',
+  '```', header, '```', '',
+  rest, '',
+  ...(lang === 'en' ? [] : [INTAKE_NEXT_LANG[lang][decision], '']),
+  INTAKE_NEXT[decision], '',
+].join('\n');
+
+const TEMPLATES = Object.freeze({
+  en: Object.freeze({
+    intake: intakeBody('en'),
+    'needs-human-pr': ({ id, note }) => `${marker('note', id)}\n**Factory needs a human:** ${note}\n`,
+    'needs-human-issue': ({ id, note }) => `${marker('note', id)}\n**Factory needs a human** for job \`${id}\`: ${note}\n`,
+    'awaiting-merge': ({ id, pr }) => `${marker('note', id)}\nThe factory approved PR #${pr}, but \`auto_merge\` is off, so the factory will not merge it. `
+      + 'A reviewer should review and merge it; the next `/factory run` then marks the job merged.\n',
+    'pr-closed': ({ id, pr }) => `${marker('note', id)}\nPR #${pr} was closed without merging, so the factory stopped job \`${id}\`.\n`,
+  }),
+  es: Object.freeze({
+    intake: intakeBody('es'),
+    'needs-human-pr': ({ id, note }) => `${marker('note', id)}\n**La factory necesita a una persona:** ${note}\n`,
+    'needs-human-issue': ({ id, note }) => `${marker('note', id)}\n**La factory necesita a una persona** para el job \`${id}\`: ${note}\n`,
+    'awaiting-merge': ({ id, pr }) => `${marker('note', id)}\nLa factory aprobó el PR #${pr}, pero \`auto_merge\` está desactivado, así que la factory no lo va a mergear. `
+      + 'Una persona debe hacer el review y el merge; el próximo `/factory run` marca el job como merged.\n',
+    'pr-closed': ({ id, pr }) => `${marker('note', id)}\nEl PR #${pr} se cerró sin merge, así que la factory detuvo el job \`${id}\`.\n`,
+  }),
+  pt: Object.freeze({
+    intake: intakeBody('pt'),
+    'needs-human-pr': ({ id, note }) => `${marker('note', id)}\n**A factory precisa de uma pessoa:** ${note}\n`,
+    'needs-human-issue': ({ id, note }) => `${marker('note', id)}\n**A factory precisa de uma pessoa** para o job \`${id}\`: ${note}\n`,
+    'awaiting-merge': ({ id, pr }) => `${marker('note', id)}\nA factory aprovou o PR #${pr}, mas \`auto_merge\` está desativado, então a factory não vai fazer o merge. `
+      + 'Uma pessoa deve fazer o review e o merge; o próximo `/factory run` marca o job como merged.\n',
+    'pr-closed': ({ id, pr }) => `${marker('note', id)}\nO PR #${pr} foi fechado sem merge, então a factory parou o job \`${id}\`.\n`,
+  }),
+});
+
+/** Renders a GitHub comment the factory posts, in the given language. Throws on unknown lang or kind. */
+export function githubBody(lang, kind, params) {
+  if (!Object.hasOwn(TEMPLATES, lang)) throw new Error(`unknown language: ${JSON.stringify(lang)}`);
+  if (!Object.hasOwn(TEMPLATES[lang], kind)) throw new Error(`unknown comment kind: ${JSON.stringify(kind)}`);
+  return TEMPLATES[lang][kind](params);
+}
+
 function postIntake(c, job, text, decision) {
   const lines = text.replace(/\r/g, '').trim().split('\n');
   const header = lines.slice(0, 4).join('\n');
   const rest = lines.slice(4).join('\n').trim();
-  ghWithBody(c, ['issue', 'comment', String(job.issue)], [
-    marker('intake', job.id),
-    `**Factory intake** for job \`${job.id}\`: **${decision}**`, '',
-    '```', header, '```', '',
-    rest, '',
-    INTAKE_NEXT[decision], '',
-  ].join('\n'));
+  ghWithBody(c, ['issue', 'comment', String(job.issue)], githubBody(c.lang, 'intake', { id: job.id, decision, header, rest }));
 }
 
 function setIntake(job, { decision, rescoped, risk, surfaces }) {
@@ -264,10 +321,10 @@ function escalate(c, job, note) {
   job.parked_from = job.stage;
   if (prState(c, job) === 'OPEN') {
     gh(c, ['pr', 'ready', String(job.pr)]);
-    ghWithBody(c, ['pr', 'comment', String(job.pr)], `${marker('note', job.id)}\n**Factory needs a human:** ${note}\n`);
+    ghWithBody(c, ['pr', 'comment', String(job.pr)], githubBody(c.lang, 'needs-human-pr', { id: job.id, note }));
   }
   addLabel(c, job, LABEL.needsHuman);
-  ghWithBody(c, ['issue', 'comment', String(job.issue)], `${marker('note', job.id)}\n**Factory needs a human** for job \`${job.id}\`: ${note}\n`);
+  ghWithBody(c, ['issue', 'comment', String(job.issue)], githubBody(c.lang, 'needs-human-issue', { id: job.id, note }));
   job.stage = 'needs-human';
   job.note = note;
 }
@@ -315,8 +372,7 @@ function merge(c, job) {
   // Only a missing key or boolean true merges; any other value means the factory does not.
   const autoMerge = c.config.auto_merge === undefined || c.config.auto_merge === true;
   if (!autoMerge) {
-    const body = `${marker('note', job.id)}\nThe factory approved PR #${job.pr}, but \`auto_merge\` is off, so the factory will not merge it. `
-      + 'A reviewer should review and merge it; the next `/factory run` then marks the job merged.\n';
+    const body = githubBody(c.lang, 'awaiting-merge', { id: job.id, pr: job.pr });
     try {
       ghWithBody(c, ['pr', 'comment', String(job.pr)], body);
     } catch (err) {
@@ -359,7 +415,7 @@ function finishIfPrClosed(c, job) {
   if (state === 'MERGED') throw new Refused(`PR #${job.pr} is MERGED; run: factory/bin/job ${job.id} to merged`);
   if (state !== 'CLOSED') throw new Refused(`PR #${job.pr} is ${state}, not CLOSED`);
   ghWithBody(c, ['issue', 'comment', String(job.issue)],
-    `${marker('note', job.id)}\nPR #${job.pr} was closed without merging, so the factory stopped job \`${job.id}\`.\n`);
+    githubBody(c.lang, 'pr-closed', { id: job.id, pr: job.pr }));
   finish(c, job, 'rejected', `PR #${job.pr} closed without merging`);
 }
 

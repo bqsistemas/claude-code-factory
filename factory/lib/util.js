@@ -44,6 +44,17 @@ export function loadConfig(root) {
   return JSON.parse(readFileSync(join(root, 'factory/config.json'), 'utf8'));
 }
 
+/** Languages the factory writes in. Missing config means English. */
+export const LANGUAGES = Object.freeze(['en', 'es', 'pt']);
+
+/** The configured language: 'en' when absent, a member of LANGUAGES, or an error. */
+export function configLanguage(config) {
+  const value = config?.language;
+  if (value === undefined) return 'en';
+  if (typeof value === 'string' && LANGUAGES.includes(value)) return value;
+  throw new Error(`factory/config.json: language must be "en", "es" or "pt", got ${JSON.stringify(value) ?? String(value)}`);
+}
+
 export function jobDir(root, id) {
   if (typeof id !== 'string' || !JOB_ID.test(id)) throw new Usage(`not a job id: ${JSON.stringify(id)}`);
   return join(root, 'factory/jobs', id);

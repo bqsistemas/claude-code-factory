@@ -172,6 +172,85 @@
     status.textContent = 'serve this folder: cd factory && python3 -m http.server 8000';
   }
 </script>
+<script type="application/json" id="i18n">
+{
+  "en": {
+    "columns": {
+      "intake": "Intake",
+      "needs-info": "Needs info",
+      "spec": "Spec",
+      "build": "Build",
+      "gate": "Gate",
+      "review": "Review",
+      "approve": "Approve",
+      "merging": "Merging",
+      "awaiting-merge": "Awaiting merge",
+      "needs-human": "Needs human",
+      "merged": "Merged",
+      "rejected": "Rejected"
+    },
+    "hintNeedsHumanPr": "merge the PR to approve, or rework it:",
+    "hintNeedsHumanNoPr": "no PR yet: fix the cause, then resume it:",
+    "hintAwaitingMerge": "waiting for a reviewer to merge the PR",
+    "hintNeedsInfo": "waiting for the author to reply on the issue",
+    "emptyBoard": "No jobs yet. Label a GitHub issue <code>factory<\/code> and run <code>/factory run<\/code> in Claude Code.",
+    "demoLink": "Or open the <a href=\"?demo\">demo board<\/a>.",
+    "notWritten": "Not written yet.",
+    "parkedHuman": "Needs a human: {n}",
+    "parkedInfo": "Waiting for info: {n}"
+  },
+  "es": {
+    "columns": {
+      "intake": "Intake",
+      "needs-info": "Falta info",
+      "spec": "Spec",
+      "build": "Build",
+      "gate": "Gate",
+      "review": "Review",
+      "approve": "Aprobación",
+      "merging": "Merging",
+      "awaiting-merge": "Esperando merge",
+      "needs-human": "Necesita una persona",
+      "merged": "Merged",
+      "rejected": "Rechazado"
+    },
+    "hintNeedsHumanPr": "hacé merge del PR para aprobar, o pedí un rework:",
+    "hintNeedsHumanNoPr": "todavía no hay PR: corregí la causa y reanudá el job:",
+    "hintAwaitingMerge": "esperando que una persona haga merge del PR",
+    "hintNeedsInfo": "esperando que el autor responda en el issue",
+    "emptyBoard": "Todavía no hay jobs. Etiquetá un issue de GitHub con <code>factory<\/code> y ejecutá <code>/factory run<\/code> en Claude Code.",
+    "demoLink": "O abrí el <a href=\"?demo\">tablero de demo<\/a>.",
+    "notWritten": "Todavía no está escrito.",
+    "parkedHuman": "Necesitan una persona: {n}",
+    "parkedInfo": "Esperando info: {n}"
+  },
+  "pt": {
+    "columns": {
+      "intake": "Intake",
+      "needs-info": "Falta info",
+      "spec": "Spec",
+      "build": "Build",
+      "gate": "Gate",
+      "review": "Review",
+      "approve": "Aprovação",
+      "merging": "Merging",
+      "awaiting-merge": "Aguardando merge",
+      "needs-human": "Precisa de uma pessoa",
+      "merged": "Merged",
+      "rejected": "Rejeitado"
+    },
+    "hintNeedsHumanPr": "faça o merge do PR para aprovar, ou peça um rework:",
+    "hintNeedsHumanNoPr": "ainda não há PR: corrija a causa e retome o job:",
+    "hintAwaitingMerge": "aguardando uma pessoa fazer o merge do PR",
+    "hintNeedsInfo": "aguardando o autor responder no issue",
+    "emptyBoard": "Ainda não há jobs. Marque um issue do GitHub com <code>factory<\/code> e execute <code>/factory run<\/code> no Claude Code.",
+    "demoLink": "Ou abra o <a href=\"?demo\">quadro de demo<\/a>.",
+    "notWritten": "Ainda não foi escrito.",
+    "parkedHuman": "Precisam de uma pessoa: {n}",
+    "parkedInfo": "Aguardando info: {n}"
+  }
+}
+</script>
 <script type="module">
 import {
   STAGE_COLUMNS, activeAgents, agentsHtml, costTimeHtml, linksHtml, roundChipsHtml,
@@ -183,8 +262,16 @@ const REVIEWERS = ['security', 'ux', 'ui', 'code'];
 const ALERT = new Set(['needs-human', 'needs-info']);
 const DONE = new Set(['merged', 'rejected']);
 
+const I18N = JSON.parse(document.getElementById('i18n').textContent);
 let board = { jobs: [] }, lastText = '', openJob = null, openFile = null;
 const cache = new Map();
+// Board data only selects a dictionary key; it is never interpolated as markup.
+let T = I18N.en;
+function setLanguage() {
+  const lang = Object.hasOwn(I18N, board.language) ? board.language : 'en';
+  T = I18N[lang];
+  document.documentElement.lang = lang;
+}
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -221,24 +308,26 @@ function card(job) {
     ${agentsHtml(job)}
     ${rows ? `<div class="rounds">${rows}</div>` : ''}
     ${job.note ? `<div class="note">${esc(job.note)}</div>` : ''}
-    ${alert ? `<span class="hint">${job.pr ? 'merge the PR to approve, or rework it:' : 'no PR yet: fix the cause, then resume it:'}</span>
+    ${alert ? `<span class="hint">${job.pr ? T.hintNeedsHumanPr : T.hintNeedsHumanNoPr}</span>
       ${issue ? `<code class="cmd">/factory rework ${esc(issue)}</code>` : ''}` : ''}
-    ${job.stage === 'awaiting-merge' ? '<span class="hint">waiting for a reviewer to merge the PR</span>' : ''}
-    ${job.stage === 'needs-info' && !job.note ? '<span class="hint">waiting for the author to reply on the issue</span>' : ''}
+    ${job.stage === 'awaiting-merge' ? `<span class="hint">${T.hintAwaitingMerge}</span>` : ''}
+    ${job.stage === 'needs-info' && !job.note ? `<span class="hint">${T.hintNeedsInfo}</span>` : ''}
     <div class="meta"><span class="cost-time">${costTimeHtml(job)}</span>
       <span class="when">${job.round ? `round ${esc(job.round)}/${esc(job.max_rounds ?? 3)} · ` : ''}${ago(job.updated)}</span></div>
   </article>`;
 }
 
 function render() {
+  setLanguage();
   const jobs = board.jobs || [];
   if (!jobs.length) {
-    $('board').innerHTML = `<div class="empty">No jobs yet. Label a GitHub issue <code>factory</code> and run <code>/factory run</code> in Claude Code.
-      ${DEMO ? '' : '<br><br>Or open the <a href="?demo">demo board</a>.'}</div>`;
+    $('board').innerHTML = `<div class="empty">${T.emptyBoard}
+      ${DEMO ? '' : `<br><br>${T.demoLink}`}</div>`;
     return;
   }
   const known = new Set(STAGE_COLUMNS.map(s => s[0]));
-  $('board').innerHTML = STAGE_COLUMNS.map(([key, label]) => {
+  $('board').innerHTML = STAGE_COLUMNS.map(([key, fallback]) => {
+    const label = T.columns[key] || fallback;
     const list = jobs.filter(j => (known.has(j.stage) ? j.stage : 'intake') === key);
     return `<section class="col ${ALERT.has(key) && list.length ? 'alert' : ''} ${list.length ? '' : 'quiet'}" id="col-${esc(key)}" aria-label="${esc(label)}">
       <h2><span>${label}</span><span>${list.length || ''}</span></h2>
@@ -249,7 +338,7 @@ function render() {
   const parked = $('parked');
   parked.hidden = !(human + info);
   parked.href = human ? '#col-needs-human' : '#col-needs-info';
-  parked.textContent = [human && `${human} need${human === 1 ? 's' : ''} a human`, info && `${info} waiting for info`]
+  parked.textContent = [human && T.parkedHuman.replace('{n}', human), info && T.parkedInfo.replace('{n}', info)]
     .filter(Boolean).join(' · ');
 }
 
@@ -321,7 +410,7 @@ async function openDrawer(id, file) {
     `<button class="file ${texts[i] === null ? 'missing' : ''}" role="tab" data-file="${esc(f)}" aria-controls="doc"
       aria-selected="${f === openFile}" tabindex="${f === openFile ? 0 : -1}">${esc(f)}</button>`).join('');
   const text = texts[files.indexOf(openFile)];
-  $('doc').innerHTML = text === null ? '<p class="missing-doc">Not written yet.</p>' : md(text);
+  $('doc').innerHTML = text === null ? `<p class="missing-doc">${T.notWritten}</p>` : md(text);
   $('drawer').classList.add('open');
   $('drawer').setAttribute('aria-hidden', 'false');
   $('scrim').classList.add('open');
