@@ -7,6 +7,8 @@ const publicDir = new URL('../public/', import.meta.url);
 const routes = new Map([
   ['/', { file: new URL('index.html', publicDir), type: 'text/html; charset=utf-8' }],
   ['/styles.css', { file: new URL('styles.css', publicDir), type: 'text/css; charset=utf-8' }],
+  ['/game', { file: new URL('game.html', publicDir), type: 'text/html; charset=utf-8' }],
+  ['/game.js', { file: new URL('game.js', publicDir), type: 'text/javascript; charset=utf-8' }],
 ]);
 
 const securityHeaders = {
