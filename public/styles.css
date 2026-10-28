@@ -767,6 +767,73 @@ main {
   font-weight: 700;
 }
 
+/* Scenario focus on the plant: what the picked scenario never uses is dimmed, where
+   the package has been is a soft trail (no bloom), and what is still ahead is an
+   accent hairline outline with no fill. The layer slabs and their names stay full. */
+.iso-scene .iso-dim {
+  opacity: 0.18;
+}
+
+.iso-scene .iso-trail .iso-face {
+  stroke: var(--iso-accent-dim);
+}
+
+.iso-scene .iso-trail .iso-wire,
+.iso-scene .iso-trail .iso-wire.iso-branch,
+.iso-scene .iso-trail .iso-wire.iso-loop,
+.iso-scene .iso-trail .iso-wire.iso-human {
+  stroke: var(--iso-accent-dim);
+  stroke-width: 2;
+}
+
+.iso-scene .iso-label.iso-trail {
+  fill: var(--iso-accent-dim);
+}
+
+.iso-scene .iso-preview .iso-face,
+.iso-scene .iso-preview .iso-face--top {
+  fill: none;
+  stroke: var(--iso-accent);
+}
+
+.iso-scene .iso-preview .iso-wire,
+.iso-scene .iso-preview .iso-wire.iso-branch,
+.iso-scene .iso-preview .iso-wire.iso-loop,
+.iso-scene .iso-preview .iso-wire.iso-human {
+  stroke: var(--iso-accent);
+}
+
+/* The scenario picker: a fieldset of native radios under the tour controls. */
+.game__picker {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--iso-line);
+  border-radius: var(--radius);
+}
+
+.game__picker legend {
+  padding: 0 0.25rem;
+  color: var(--iso-ink);
+}
+
+.game__picker label {
+  display: block;
+  padding: 0.2rem 0;
+  cursor: pointer;
+}
+
+.game__picker-hint {
+  display: block;
+  margin-left: 1.5rem;
+  color: var(--iso-ink);
+  font-size: 0.8em;
+}
+
+.game__picker input[type='radio']:focus-visible {
+  outline: 3px solid var(--iso-accent-hi);
+  outline-offset: 2px;
+}
+
 /* Guided tour: a transparent layer of station outlines over the floor drawing,
    positioned like it (FactoryLoop sets the same box and viewBox). Only these
    polygons take clicks inside the scene; the selector is more specific than

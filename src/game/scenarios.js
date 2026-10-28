@@ -63,6 +63,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'auto-merge-on',
     title: 'Camino feliz con auto_merge',
+    hint: 'Todas las estaciones → merged',
     summary:
       'Un issue pasa por todas las estaciones, de la cola al merge. Con auto_merge activo el job termina solo, sin esperar a una persona.',
     ...happy,
@@ -128,6 +129,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'reject',
     title: 'intake rechaza el issue',
+    hint: 'intake: REJECT → rejected',
     summary: 'El pedido no es viable para el factory. intake lo rechaza en la puerta y el job termina sin gastar un solo agente más.',
     ...jobs.low,
     steps: [
@@ -143,6 +145,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'needs-info',
     title: 'intake pide más información',
+    hint: 'intake: NEEDS-INFO → vuelve a intake',
     summary: 'Falta información para especificar. El job se estaciona con una pregunta y vuelve a intake cuando alguien responde.',
     ...jobs.low,
     steps: [
@@ -165,6 +168,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'gate-fail',
     title: 'El gate falla',
+    hint: 'GATE: FAIL → vuelve a Build',
     summary: 'factory/checks.sh falla antes de revisar. El job vuelve al builder con el log y no se lanza ningún revisor.',
     ...gateFail,
     steps: [
@@ -186,6 +190,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'changes',
     title: 'Un revisor pide cambios',
+    hint: 'CHANGES → vuelve a Build',
     summary: 'Un revisor responde CHANGES. Cuando llegan todos, el job vuelve al builder para una ronda nueva, hasta max_rounds.',
     ...changes,
     steps: [
@@ -207,6 +212,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'escalate',
     title: 'El approver escala',
+    hint: 'ESCALATE → needs-human',
     summary: 'El approver no se anima a decidir solo. El PR queda listo y el job espera a una persona en needs-human.',
     ...escalate,
     steps: [
@@ -222,6 +228,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'auto-merge-off',
     title: 'Sin auto_merge: el PR espera',
+    hint: 'auto_merge: false → awaiting-merge',
     summary: 'Con auto_merge apagado el factory deja el PR listo pero no lo mergea. El job espera en awaiting-merge.',
     ...awaiting,
     steps: [
@@ -237,6 +244,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'human-merge',
     title: 'Una persona mergea el PR',
+    hint: 'awaiting-merge → MERGE → merged',
     summary: 'Una persona mergea el PR en GitHub. La próxima corrida de /factory run mueve el job a merged.',
     ...humanMerge,
     steps: [
@@ -252,6 +260,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'human-rework',
     title: 'Una persona pide retrabajo',
+    hint: 'needs-human → REWORK → Build',
     summary: 'Una persona revisa el PR en needs-human y pide cambios. El job vuelve al builder con sus comentarios.',
     ...rework,
     steps: [
@@ -267,6 +276,7 @@ export const SCENARIOS = deepFreeze([
   {
     id: 'pr-closed',
     title: 'Se cierra el PR',
+    hint: 'needs-human → CLOSE → rejected',
     summary: 'Una persona descarta el trabajo y cierra el PR. El job termina en rejected.',
     ...closed,
     steps: [

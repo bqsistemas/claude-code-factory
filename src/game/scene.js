@@ -283,9 +283,20 @@ const SPOTS = Object.freeze({
   'layer-control': ['end', -345.5, 112],
   'layer-salida': ['end', -487.5, 250],
 });
+// The branch-name labels each name one track (`from>to`); every other label has `track: null`.
+const NAMED_TRACK = Object.freeze({
+  'accept': 'intake>route',
+  'apv': 'approve>merge',
+  'esc': 'approve>bay-needs-human',
+  'gatefail': 'gate>build',
+  'changes': 'review>build',
+  'rework': 'bay-needs-human>build',
+  'close': 'bay-needs-human>bay-rejected',
+  'hmerge': 'bay-awaiting-merge>bay-merged',
+});
 const label = (id, text, hot = null, layer = false) => {
   const [anchor, x, y] = SPOTS[id];
-  return { id, text, anchor, x, y, hot, layer };
+  return { id, text, anchor, x, y, hot, track: NAMED_TRACK[id] ?? null, layer };
 };
 const NAMES = Object.freeze({
   'accept': 'ACCEPT',
@@ -301,7 +312,7 @@ const NAMES = Object.freeze({
 /**
  * Every flat label on the floor: the stations, the bins and bays, the names of the
  * branches and loops, and the layer names.
- * @type {{ id: string, text: string, anchor: 'start'|'middle'|'end', x: number, y: number, hot: string|null, layer: boolean }[]}
+ * @type {{ id: string, text: string, anchor: 'start'|'middle'|'end', x: number, y: number, hot: string|null, track: string|null, layer: boolean }[]}
  */
 export const LABELS = deepFreeze([
   ...STATIONS.map((st, i) => label(st.id, stationLabel(i), st.id)),

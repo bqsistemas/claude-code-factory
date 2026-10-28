@@ -16,6 +16,7 @@ import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
 import { floorView, screenLayout } from './layout.js';
 import { BELT_PERIOD_MS, BELT_PITCH, WIRE_PERIOD_MS, packageAt, treadOffset } from './pipeline.js';
+import { REPEAT_SUFFIX, plantFocus } from './routes.js';
 import { SCENARIOS, TOUR_STEPS } from './scenarios.js';
 import { TOUR_STEP_MS } from './tour.js';
 import {
@@ -70,6 +71,40 @@ const SIDE = (x, y, z) => plane([x, y, z], [0, -1, 0], [0, 0, -1]); // x = max f
 const pathOf = (points) => `M${points.map((p) => at(p).join(' ')).join('L')}`;
 
 const cx = (...names) => names.filter(Boolean).join(' ');
+
+// --- Scenario focus ---------------------------------------------------------------
+// With a scenario picked, the plant shows only its route: parts the scenario never
+// uses are dimmed (iso-dim), what the package has passed is a soft trail (iso-trail),
+// what is still ahead is an outline (iso-preview) and the current step keeps today's
+// glow. Without one (`focus` null) nothing here applies and the drawing is unchanged.
+const focusCache = new Map();
+const focusFor = (scenarioId, stepInScenario) => {
+  const cacheKey = `${scenarioId}#${stepInScenario}`;
+  if (!focusCache.has(cacheKey)) {
+    const f = plantFocus(scenarioId, stepInScenario);
+    const mark = (cls, nodes, tracks) => [
+      ...nodes.map((n) => ['node', n, cls]),
+      ...tracks.map((t) => ['track', t, cls]),
+    ];
+    const entries = [
+      ...mark('iso-dim', f.dimmed.nodes, f.dimmed.tracks),
+      ...mark('iso-trail', f.passed.nodes, f.passed.tracks),
+      ...mark('iso-preview', f.ahead.nodes, f.ahead.tracks),
+    ];
+    focusCache.set(cacheKey, {
+      ...f,
+      nodeClass: new Map(entries.filter(([kind]) => kind === 'node').map(([, id, cls]) => [id, cls])),
+      trackClass: new Map(entries.filter(([kind]) => kind === 'track').map(([, id, cls]) => [id, cls])),
+      dimLabels: new Set(f.dimmed.labels),
+      passedTracks: new Set(f.passed.tracks),
+      currentSet: new Set(f.currentTracks),
+      repeatSet: new Set(f.repeats),
+    });
+  }
+  return focusCache.get(cacheKey);
+};
+// Wraps a drawn part in its focus class group; a part with no class is left as it is.
+const tagged = (cls, key, element) => (cls ? <g key={key} className={cls}>{element}</g> : element);
 
 // A box is its three visible faces, each an opaque rect on its plane.
 function IsoBox({ position: [x, y, z], size: [w, d, h], className }) {
@@ -184,7 +219,7 @@ const BELTS = TRACKS.filter((t) => t.kind === 'belt').flatMap((t) =>
     const from = t.points[k];
     // A lift between two layers: a slim pillar.
     if (from[0] === to[0] && from[1] === to[1]) {
-      return [{ key: `${trackKey(t)}:${k}:lift`, lift: [from[0] + HALF - LIFT / 2, from[1] + HALF - LIFT / 2, Math.min(from[2], to[2]), Math.abs(to[2] - from[2])] }];
+      return [{ track: trackKey(t), key: `${trackKey(t)}:${k}:lift`, lift: [from[0] + HALF - LIFT / 2, from[1] + HALF - LIFT / 2, Math.min(from[2], to[2]), Math.abs(to[2] - from[2])] }];
     }
     const axis = from[0] === to[0] ? 1 : 0;
     const cross = 1 - axis;
@@ -198,16 +233,17 @@ const BELTS = TRACKS.filter((t) => t.kind === 'belt').flatMap((t) =>
       pieces = pieces.flatMap(([a, b]) => (cut[1] <= a || cut[0] >= b ? [[a, b]] : [[a, Math.min(b, cut[0])], [Math.max(a, cut[1]), b]].filter(([p, q]) => q - p > 0.5)));
     }
     const len = Math.abs(to[axis] - from[axis]);
-    return pieces.map(([a, b]) => ({ key: `${trackKey(t)}:${k}:${a}`, axis, dir, z, a, b, across, origin: from[axis] + HALF, len }));
+    return pieces.map(([a, b]) => ({ track: trackKey(t), key: `${trackKey(t)}:${k}:${a}`, axis, dir, z, a, b, across, origin: from[axis] + HALF, len }));
   }),
 );
 
-function Belts({ time }) {
+function Belts({ time, focus }) {
   const shift = treadOffset(time, BELT_PITCH, BELT_PERIOD_MS);
   return (
     <g>
-      {BELTS.map(({ key, lift, axis, dir, z, a, b, across, origin, len }) => {
-        if (lift) return <IsoBox key={key} position={[lift[0], lift[1], lift[2]]} size={[LIFT, LIFT, lift[3]]} />;
+      {BELTS.map(({ track: trackId, key, lift, axis, dir, z, a, b, across, origin, len }) => {
+        const cls = focus?.trackClass.get(trackId);
+        if (lift) return tagged(cls, key, <IsoBox key={key} position={[lift[0], lift[1], lift[2]]} size={[LIFT, LIFT, lift[3]]} />);
         const length = b - a;
         const width = across[1] - across[0];
         // Rollers sit at fixed distances from the segment start, so they advance along it.
@@ -219,7 +255,7 @@ function Belts({ time }) {
         const top = axis === 0 ? TOP(a, across[0], z) : TOP(across[0], a, z);
         const edge = axis === 0 ? FRONT(a, across[1], z) : SIDE(across[1], b, z);
         return (
-          <g key={key}>
+          <g key={key} className={cls}>
             <rect transform={edge} width={length} height={4} className="iso-face" />
             <rect transform={top} width={axis === 0 ? length : width} height={axis === 0 ? width : length} className="iso-face iso-face--top" />
             <g transform={top}>
@@ -243,11 +279,11 @@ function Belts({ time }) {
 
 // Branch, loop and human tracks: dotted hairlines at deck height with an arrowhead.
 // On the tour the dots travel along the wire; in the quiz they stand still.
-function Wires({ time }) {
+function Wires({ time, focus }) {
   return (
     <g>
       {WIRES.map(({ key, kind, points }) => (
-        <g key={key}>
+        <g key={key} className={focus?.trackClass.get(key)}>
           <path
             d={pathOf(points)}
             className={cx('iso-wire', KIND_CLASS[kind])}
@@ -473,18 +509,28 @@ const PAINT_ORDER = Object.values(NODES)
   .sort((a, b) => a.order - b.order);
 
 // Flat text at fixed screen positions (see LABELS in scene.js); the one of the lit node is lit.
-function Labels({ litId, view }) {
+function Labels({ litId, view, focus }) {
   return (
     <g>
       {LABELS.map((item) => {
         // Where the camera window is narrower than the plant (phones), a label the window
         // would cut in half is left out.
-        const box = labelBox(item);
+        const text = focus && focus.repeatSet.has(item.id) ? item.text + REPEAT_SUFFIX : item.text;
+        const box = labelBox({ ...item, text });
         if (box.x0 < view.x || box.x1 > view.x + view.width || box.y0 < view.y || box.y1 > view.y + view.height) return null;
         const [lx, ly] = labelPosition(item);
+        const named = focus && item.track;
+        const focusClass =
+          focus && focus.dimLabels.has(item.id)
+            ? 'iso-dim'
+            : named && focus.currentSet.has(item.track)
+              ? 'iso-hot'
+              : named && focus.passedTracks.has(item.track)
+                ? 'iso-trail'
+                : null;
         return (
-          <text key={item.id} x={num(lx)} y={num(ly)} textAnchor={item.anchor} className={cx('iso-label', item.layer && 'iso-label--layer', item.hot && item.hot === litId && 'iso-hot')}>
-            {item.text}
+          <text key={item.id} x={num(lx)} y={num(ly)} textAnchor={item.anchor} className={cx('iso-label', item.layer && 'iso-label--layer', item.hot && item.hot === litId && 'iso-hot', focusClass)}>
+            {text}
           </text>
         );
       })}
@@ -495,7 +541,7 @@ function Labels({ litId, view }) {
 // `step` is the TOUR_STEPS entry at `stepIndex` on the tour, and undefined in the quiz.
 // `stepMs` is the time since the step started; `time` is the same on the tour's
 // whole-cycle clock, which keeps belts and wires seamless from one step to the next.
-function IsoFloor({ active, frame, box, time, step, view, pkg }) {
+function IsoFloor({ active, frame, box, time, step, view, pkg, focusId }) {
   const current = STAGES[Math.max(active, 0)];
   const tour = step !== undefined;
   const scenario = tour ? SCENARIOS[step.scenarioIndex] : null;
@@ -503,6 +549,7 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
   const lit = interpolate(frame, LIT_FRAMES, [0, 1], clamp);
   const pulseOffset = interpolate(frame, PACKAGE_FRAMES, PULSE_OFFSETS, clamp);
   const litKeys = tour ? step.path.slice(1).map((id, k) => `${step.path[k]}>${id}`) : [];
+  const focus = tour && focusId && step.scenarioId === focusId ? focusFor(focusId, step.stepInScenario) : null;
   const litPods = tour ? new Set(step.actors.map((actor) => actor.name)) : null;
   const routed = scenario ? Object.keys(scenario.routed.reviewers) : [];
   const { x, y, width, height } = view;
@@ -520,12 +567,13 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
     >
       <Filters />
       <GroundPlate litLayer={LAYER_OF.get(litId)} />
-      <Belts time={time} />
+      <Belts time={time} focus={focus} />
       {PAINT_ORDER.map(({ node }) => {
         const i = STATION_ID.get(node.id);
-        if (i === undefined) return <LowNode key={node.id} node={node} lit={node.id === litId ? lit : 0} />;
+        const cls = focus?.nodeClass.get(node.id);
+        if (i === undefined) return tagged(cls, node.id, <LowNode key={node.id} node={node} lit={node.id === litId ? lit : 0} />);
         return (
-          <g key={node.id}>
+          <g key={node.id} className={cls}>
             <Station
               station={STATIONS[i]}
               stage={STAGES[i]}
@@ -536,7 +584,7 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
           </g>
         );
       })}
-      <Wires time={time} />
+      <Wires time={time} focus={focus} />
       {tour ? (
         <LitTracks keys={litKeys} lit={lit} />
       ) : (
@@ -545,7 +593,7 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
       {/* The package rides at deck height; nothing stands in front of it on a deck, and
           bins and bays are lower than the deck, so it is painted after every node. */}
       <Package position={pkg} />
-      <Labels litId={litId} view={view} />
+      <Labels litId={litId} view={view} focus={focus} />
     </svg>
   );
 }
@@ -601,7 +649,7 @@ function StationHits({ active, box, view, onSelect }) {
 // pick the TOUR_STEPS entry the floor shows; otherwise `stageIndex` picks the stage.
 // `split` is true on wide screens, where the Player fills the right column and the
 // whole composition is the floor box; below 64rem the floor box leaves room for the dock.
-export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false, split = false }) {
+export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false, split = false, scenario = null }) {
   const frame = useCurrentFrame();
   const { width, height, fps } = useVideoConfig();
   const clampTo = (v, length) => Math.min(Math.max(Number.isFinite(v) ? Math.trunc(v) : 0, 0), length - 1);
@@ -620,7 +668,7 @@ export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false,
   const time = tour ? stepAt * TOUR_STEP_MS + stepMs : undefined;
   return (
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
-      <IsoFloor active={active} frame={frame} box={layout.scene} time={time} step={step} view={view} pkg={pkg} />
+      <IsoFloor active={active} frame={frame} box={layout.scene} time={time} step={step} view={view} pkg={pkg} focusId={scenario} />
       {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} view={view} onSelect={onSelect} />}
     </AbsoluteFill>
   );
