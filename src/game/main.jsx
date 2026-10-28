@@ -93,55 +93,61 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
 
   return (
     <section className="game__panel" aria-labelledby="stage-title">
-      <p className="game__progress">
-        Pregunta {number} de {QUESTIONS.length}
-      </p>
-      <h1 id="stage-title" className="game__title" tabIndex={-1} ref={headingRef}>
-        {stage.title}
-      </h1>
-      <StagePlayer stageIndex={stageIndex} />
-      <p className="game__text">{stage.summary}</p>
-      <h2 className="game__question" id="question-prompt">{question.prompt}</h2>
-      <ul className="game__options" aria-labelledby="question-prompt">
-        {question.options.map((option, i) => {
-          let mark = '';
-          if (result && i === question.correct) mark = ' game__option--correct';
-          else if (result && i === result.choice) mark = ' game__option--wrong';
-          return (
-            <li key={option}>
-              <button
-                type="button"
-                className={`game__option${mark}`}
-                disabled={Boolean(result)}
-                onClick={() => onAnswer(i)}
-              >
-                {option}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <div className="game__feedback" aria-live="polite">
-        {result && (
-          <>
-            <p className={result.correct ? 'game__verdict game__verdict--correct' : 'game__verdict game__verdict--wrong'}>
-              {result.correct ? 'Correcto' : 'Incorrecto'}
-              {' · '}+{result.correct ? POINTS_PER_CORRECT : 0} puntos
-            </p>
-            {!result.correct && (
-              <p className="game__text">
-                La respuesta correcta es: {question.options[question.correct]}
-              </p>
+      <div className="game__stage">
+        <div className="game__media">
+          <p className="game__progress">
+            Pregunta {number} de {QUESTIONS.length}
+          </p>
+          <h1 id="stage-title" className="game__title" tabIndex={-1} ref={headingRef}>
+            {stage.title}
+          </h1>
+          <StagePlayer stageIndex={stageIndex} />
+          <p className="game__text">{stage.summary}</p>
+        </div>
+        <div className="game__quiz">
+          <h2 className="game__question" id="question-prompt">{question.prompt}</h2>
+          <ul className="game__options" aria-labelledby="question-prompt">
+            {question.options.map((option, i) => {
+              let mark = '';
+              if (result && i === question.correct) mark = ' game__option--correct';
+              else if (result && i === result.choice) mark = ' game__option--wrong';
+              return (
+                <li key={option}>
+                  <button
+                    type="button"
+                    className={`game__option${mark}`}
+                    disabled={Boolean(result)}
+                    onClick={() => onAnswer(i)}
+                  >
+                    {option}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="game__feedback" aria-live="polite">
+            {result && (
+              <>
+                <p className={result.correct ? 'game__verdict game__verdict--correct' : 'game__verdict game__verdict--wrong'}>
+                  {result.correct ? 'Correcto' : 'Incorrecto'}
+                  {' · '}+{result.correct ? POINTS_PER_CORRECT : 0} puntos
+                </p>
+                {!result.correct && (
+                  <p className="game__text">
+                    La respuesta correcta es: {question.options[question.correct]}
+                  </p>
+                )}
+                <p className="game__text">{question.explanation}</p>
+              </>
             )}
-            <p className="game__text">{question.explanation}</p>
-          </>
-        )}
+          </div>
+          {result && (
+            <button type="button" className="game__button" ref={nextRef} onClick={onNext}>
+              Siguiente
+            </button>
+          )}
+        </div>
       </div>
-      {result && (
-        <button type="button" className="game__button" ref={nextRef} onClick={onNext}>
-          Siguiente
-        </button>
-      )}
     </section>
   );
 }

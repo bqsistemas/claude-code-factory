@@ -5,6 +5,7 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 
 import { STAGES } from './engine.js';
+import { Octopus } from './Octopus.jsx';
 
 const color = {
   bg: 'var(--color-bg, #0b0d17)',
@@ -153,14 +154,18 @@ function StageDetail({ stage, index, frame, fps }) {
               <span
                 key={agent.name}
                 style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
                   fontSize: 22,
-                  padding: '2px 12px',
+                  padding: '0 14px 0 6px',
                   border: `2px solid ${color.green}`,
                   borderRadius: 4,
                   color: color.green,
                   opacity: chip,
                 }}
               >
+                <Octopus name={agent.name} offset={i} />
                 {agent.name} · {agent.model}
               </span>
             );
