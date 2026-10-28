@@ -22,7 +22,7 @@ spec-writer (opus) → spec.md
 builder            → commits; first round pushes + opens draft PR "Closes #<n>"
 gate (script)      → checks.sh; FAIL → builder gets the log, no reviewers spawned
 reviewers (routed) → parallel, WAIT FOR ALL; CHANGES → builder → gate → reviewers (max rounds)
-approver (opus)    → APPROVE: sync origin/main, gate, gh pr merge
+approver (opus)    → APPROVE: sync origin/main, gate, gh pr merge (auto_merge: false → PR ready + comment, awaiting-merge)
                      ESCALATE: PR ready, decision as PR comment, label factory:needs-human
 ```
 
@@ -48,7 +48,7 @@ Agents live in `.claude/agents/`: `intake`, `spec-writer`, `builder`,
 
 ```
 factory/
-  config.json           concurrency, max_rounds, routing table, models, prices, protected tests, repo
+  config.json           concurrency, max_rounds, auto_merge, routing table, models, prices, protected tests, repo
   checks.sh             the repo's checks; the gate runs the main checkout's copy
   bin/job               the only writer of job.json and board.json; every transition
   bin/gate <id>         runs checks.sh in the worktree, guards protected tests → round-N/checks.md
@@ -81,8 +81,9 @@ factory/
     cause, run `factory/bin/job <id> to <parked_from>` (`parked_from` is in `job.json`;
     a refusal names it), then continue the job at that stage.
 
-There is no approve command: a human approves by merging the PR on GitHub, and the
-next `/factory run` moves the job to `merged`.
+There is no approve command: a human approves by merging the PR on GitHub (a job in
+`approve`, `needs-human` or `awaiting-merge`), and the next `/factory run` moves the
+job to `merged`.
 
 ## Preflight (every command)
 
@@ -90,8 +91,12 @@ next `/factory run` moves the job to `merged`.
    path in `git worktree list`, and the current branch is `main`. Otherwise stop and
    tell the user.
 2. `gh auth status` succeeds. Otherwise stop.
-3. `git fetch origin`, then `git merge --ff-only origin/main` when it applies cleanly
-   (skip it with a warning when it doesn't).
+3. `git fetch origin`, then run `git rev-list --count origin/main..main`. When the
+   count is greater than 0, stop and tell the user that local `main` has commits
+   missing from `origin/main`, and that they should push them or open a PR before
+   running the factory. Jobs build from `origin/main`. Otherwise continue with
+   `git merge --ff-only origin/main` when it applies cleanly (skip it with a warning
+   when it doesn't).
 4. If the labels are missing, tell the user to run `factory/bin/setup` once.
 
 ## /factory run
@@ -100,10 +105,13 @@ next `/factory run` moves the job to `merged`.
    `factory/bin/job new <n>` for each issue. It prints the job id and is idempotent,
    so existing jobs keep theirs. A refusal means the issue isn't open or labeled.
 2. Parked jobs: for every `needs-info` job try `job <id> to intake`, and for every
-   `needs-human` job try `job <id> to merged`. A refusal just means "still waiting".
+   `approve`, `needs-human` or `awaiting-merge` job try `job <id> to merged`. A refusal
+   just means "still waiting". This runs before any approver is spawned, so a PR
+   merged by hand while the job sat in `approve` is caught without an agent.
 3. Advance up to `concurrency` active jobs (stages `intake` to `merging`), oldest id
    first. A job resumes from its `stage` in `job.json` (see **Stages**). When one
-   finishes or parks, start the next.
+   finishes or parks, start the next. `awaiting-merge` is parked: it uses no
+   `concurrency` slot.
 4. Run `factory/bin/job <id> sync` after each agent finishes, so the dashboard shows
    chips and cost.
 5. When no active job is left, print `factory/bin/job summary` and stop.
@@ -173,13 +181,18 @@ Run each step with `factory/bin/job`. It checks the files and refuses (exit 1,
 - **approve**: spawn `approver`. Then:
   - `APPROVE`: `job <id> to merging`. The script syncs `origin/main` into the branch,
     pushes `factory/<id>`, re-runs the gate into `merge-checks.md`, marks the PR ready
-    and merges it. The job ends `merged`, or `needs-human` with a note naming the
-    step that failed.
+    and, with `auto_merge` on, merges it. The job ends `merged`, or `needs-human` with
+    a note naming the step that failed. With `auto_merge: false` the PR is marked
+    ready and gets a comment asking a reviewer to merge it, and the job ends
+    `awaiting-merge`.
   - `ESCALATE`: `job <id> to needs-human`. The PR is marked ready, `decision.md` is
     posted on it, and the issue gets `factory:needs-human`.
+- **awaiting-merge**: no agent runs. The next `/factory run` moves the job to `merged`
+  once the PR is merged. A human can park it with
+  `job <id> to needs-human --note "<reason>"`, for example when the PR was closed.
 - **merging** left over from a crash: `job <id> to needs-human --note "merge interrupted"`.
 
-Report each job that reaches `merged`, `needs-human`, `needs-info` or `rejected` in
+Report each job that reaches `merged`, `awaiting-merge`, `needs-human`, `needs-info` or `rejected` in
 one line: id, issue, stage, the note.
 
 ## Resume
@@ -196,7 +209,7 @@ from its `stage`. Named builders don't survive a session; spawn a fresh
 - Each agent writes only its own file. Never edit an agent's file for it.
 - Only `factory/bin/job` writes `job.json` and `board.json`.
 - Push only `factory/*` branches, merge only through `job <id> to merging` (which runs
-  `gh pr merge`), never deploy.
+  `gh pr merge`, and only when `auto_merge` is on), never deploy.
 - At most `max_rounds` rounds per job (a gate failure uses one), one PR per issue.
 - Dashboard: `cd factory && python3 -m http.server 8000`, then open
   http://localhost:8000/dashboard.html.

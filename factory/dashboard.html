@@ -223,6 +223,7 @@ function card(job) {
     ${job.note ? `<div class="note">${esc(job.note)}</div>` : ''}
     ${alert ? `<span class="hint">${job.pr ? 'merge the PR to approve, or rework it:' : 'no PR yet: fix the cause, then resume it:'}</span>
       ${issue ? `<code class="cmd">/factory rework ${esc(issue)}</code>` : ''}` : ''}
+    ${job.stage === 'awaiting-merge' ? '<span class="hint">waiting for a reviewer to merge the PR</span>' : ''}
     ${job.stage === 'needs-info' && !job.note ? '<span class="hint">waiting for the author to reply on the issue</span>' : ''}
     <div class="meta"><span class="cost-time">${costTimeHtml(job)}</span>
       <span class="when">${job.round ? `round ${esc(job.round)}/${esc(job.max_rounds ?? 3)} · ` : ''}${ago(job.updated)}</span></div>
