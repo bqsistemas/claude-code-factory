@@ -13,10 +13,13 @@
     "build:game": "esbuild src/game/main.jsx --bundle --format=esm --minify --jsx=automatic --define:process.env.NODE_ENV=\\\"production\\\" --outfile=public/game.js"
   },
   "devDependencies": {
+    "@react-three/fiber": "9.8.2",
     "@remotion/player": "4.0.539",
+    "@remotion/three": "4.0.539",
     "esbuild": "0.28.2",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "remotion": "4.0.539"
+    "remotion": "4.0.539",
+    "three": "0.186.1"
   }
 }

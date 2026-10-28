@@ -277,3 +277,60 @@ describe('job 004: one-page game with animated octopus agent characters', () => 
     assert.ok(items.some((li) => li.includes('Play the factory learning game')), 'game quest kept');
   });
 });
+
+describe('job 005: fullscreen 3D factory scene with the octopus agent crew', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+
+  test('AC-1: package.json adds three, @remotion/three, and @react-three/fiber as exact devDependencies', async () => {
+    const pkg = JSON.parse(await read('../package.json'));
+    for (const name of ['three', '@remotion/three', '@react-three/fiber']) {
+      assert.match(pkg.devDependencies?.[name] ?? '', /^\d/, `${name} is an exact-pinned devDependency`);
+    }
+    assert.equal(pkg.devDependencies['@remotion/three'], pkg.devDependencies.remotion, '@remotion/three matches remotion');
+    assert.ok(!pkg.dependencies || Object.keys(pkg.dependencies).length === 0, 'no runtime dependencies');
+  });
+
+  test('AC-6: the game sources build the 3D scene from the shared avatars and scene layout', async () => {
+    const octopus3d = await read('../src/game/Octopus3D.jsx');
+    assert.match(octopus3d, /from\s+'\.\.\/\.\.\/factory\/avatars\.js'/, 'Octopus3D imports ../../factory/avatars.js');
+    assert.match(octopus3d, /import\s*\{[^}]*\buseCurrentFrame\b[^}]*\}\s*from\s*'remotion'/, 'Octopus3D imports useCurrentFrame from remotion');
+
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    assert.match(loop, /import\s*\{[^}]*\bThreeCanvas\b[^}]*\}\s*from\s*'@remotion\/three'/, 'FactoryLoop imports ThreeCanvas');
+    assert.match(loop, /from\s+'\.\/scene\.js'/, 'FactoryLoop imports ./scene.js');
+    for (const tag of ['<ThreeCanvas', '<Octopus3D', '<Octopus']) {
+      assert.ok(loop.includes(tag), `FactoryLoop renders ${tag}`);
+    }
+
+    const main = await read('../src/game/main.jsx');
+    assert.match(main, /className="game__scene"/, 'main.jsx uses game__scene');
+    assert.match(main, /compositionSize\(/, 'main.jsx calls compositionSize(');
+    const player = main.match(/<Player\b[\s\S]*?\/>/)?.[0];
+    assert.ok(player, 'main.jsx renders a <Player>');
+    assert.doesNotMatch(player, /\bcontrols\b/, 'Player has no controls prop');
+  });
+
+  test('AC-7: the bundle includes three.js and the avatar colors; .game__scene is a fixed full-viewport layer', async () => {
+    const bundle = await read('../public/game.js');
+    assert.ok(bundle.includes('__THREE__'), 'three.js is bundled');
+    for (const [name, { color }] of Object.entries(AVATARS)) {
+      assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
+    }
+
+    const css = await (await fetch(`${baseUrl}/styles.css`)).text();
+    const rules = [...css.matchAll(/^\.game__scene\s*\{([^}]*)\}/gm)].map((m) => m[1]);
+    assert.ok(
+      rules.some((body) => /position:\s*fixed/.test(body) && /inset:\s*0/.test(body) && /pointer-events:\s*none/.test(body)),
+      '.game__scene rule with position: fixed, inset: 0, pointer-events: none',
+    );
+  });
+
+  test('AC-8: the quest log gains the 3D factory floor item and keeps the earlier ones', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    for (const text of ['Tour the 3D factory floor', 'Build the landing page', 'Play the factory learning game', 'Meet the octopus agent crew']) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+  });
+});

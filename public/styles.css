@@ -225,13 +225,6 @@ main {
   color: var(--color-text);
 }
 
-.game__player {
-  margin: 0 0 var(--space);
-  border: 2px solid var(--color-cyan);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
 .game__question {
   margin: calc(var(--space) * 1.5) 0 var(--space);
   color: var(--color-magenta);
@@ -400,14 +393,6 @@ main {
   font-size: 0.8rem;
 }
 
-/* The player keeps 16:9, so its width is capped by the height left after the
-   HUD, paddings, title, and summary (side by side) or the quiz too (stacked). */
-.game__media .game__player {
-  width: min(100%, max(16rem, calc((100vh - 36rem) * 16 / 9)));
-  width: min(100%, max(16rem, calc((100dvh - 36rem) * 16 / 9)));
-  margin: 0 auto 0.5rem;
-}
-
 .game__stage .game__text {
   margin: 0 0 0.5rem;
 }
@@ -441,15 +426,67 @@ main {
   gap: 0.25rem 1rem;
 }
 
-@media (min-width: 64rem) {
-  .game__stage {
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-    align-items: start;
-  }
+/* Question screens: the 3D factory scene fills the viewport behind the HUD and
+   the quiz. The Player inside it is sized to the viewport's aspect ratio. */
+.game__scene {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
 
-  .game__media .game__player {
-    width: min(100%, calc((100vh - 17rem) * 16 / 9));
-    width: min(100%, calc((100dvh - 17rem) * 16 / 9));
+/* Remotion and three.js set inline pointer-events: auto on some of their
+   elements; the scene must never take clicks or focus from the quiz. */
+.game__scene * {
+  pointer-events: none !important;
+}
+
+/* The scene is a fixed child of .game, so .game's stacking context holds it.
+   The HUD sits one level higher so the scene never covers it. */
+.game-page .hud {
+  position: relative;
+  z-index: 2;
+}
+
+.game-page .game {
+  position: relative;
+  z-index: 1;
+}
+
+/* On a question screen the section is a transparent shell and .game__stage is
+   the floating card, docked to the bottom on narrow screens. It scrolls inside
+   instead of growing past its cap, so the scene above stays visible. */
+.game-page .game__panel:has(> .game__stage) {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  max-height: min(100%, 45vh);
+  max-height: min(100%, 45dvh);
+  margin: auto 0 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+.game-page .game__stage {
+  position: relative;
+  z-index: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space);
+  background: var(--color-panel);
+  border: 2px solid var(--color-magenta);
+  border-radius: var(--radius);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.6);
+}
+
+/* Wide screens: the card docks to the right, media text above the quiz. */
+@media (min-width: 64rem) {
+  .game-page .game__panel:has(> .game__stage) {
+    width: min(32rem, 40vw);
+    max-height: 100%;
+    margin: auto 0 auto auto;
   }
 }
 
@@ -464,6 +501,24 @@ main {
 
   .game-page .game {
     overflow: visible;
+  }
+
+  /* The card grows with its content and the page scrolls. */
+  .game-page .game__panel:has(> .game__stage) {
+    max-height: none;
+  }
+
+  .game-page .game__stage {
+    overflow: visible;
+  }
+}
+
+/* Narrow small viewports: the card starts halfway down, below the caption and
+   the current station, and the page scrolls to the rest of it. */
+@media (max-width: 40rem), (max-height: 30rem) and (max-width: 63.99rem) {
+  .game-page .game__panel:has(> .game__stage) {
+    margin-top: 50vh;
+    margin-top: 50dvh;
   }
 }
 

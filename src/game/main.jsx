@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { Player } from '@remotion/player';
 
 import { FactoryLoop } from './FactoryLoop.jsx';
+import { compositionSize } from './scene.js';
 import {
   POINTS_PER_CORRECT,
   QUESTIONS,
@@ -15,7 +16,8 @@ import {
   maxScore,
 } from './engine.js';
 
-const DURATION = 90;
+// At most 5 seconds (WCAG 2.2.2): the Player has no pause control.
+const DURATION = 120;
 const stageIndexOf = (stageId) => STAGES.findIndex((s) => s.id === stageId);
 const stageTitleOf = (stageId) => STAGES[stageIndexOf(stageId)].title;
 
@@ -33,19 +35,34 @@ function useFocusOnMount() {
   return ref;
 }
 
+// Composition size that matches the viewport's aspect ratio, so the Player fills
+// the fixed scene layer without letterboxing. Updated when the window resizes.
+function useCompositionSize() {
+  const [size, setSize] = useState(() => compositionSize(window.innerWidth, window.innerHeight));
+  useEffect(() => {
+    const onResize = () => {
+      const next = compositionSize(window.innerWidth, window.innerHeight);
+      setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return size;
+}
+
 function StagePlayer({ stageIndex }) {
   const reduced = prefersReducedMotion();
+  const { width, height } = useCompositionSize();
   return (
-    <div className="game__player">
+    <div className="game__scene">
       <Player
         key={stageIndex}
         component={FactoryLoop}
         inputProps={{ stageIndex }}
         durationInFrames={DURATION}
         fps={30}
-        compositionWidth={1280}
-        compositionHeight={720}
-        controls
+        compositionWidth={width}
+        compositionHeight={height}
         // The composition has no audio. Without shared audio tags the Player does
         // not load its silent data: mp3, which the default-src 'self' CSP blocks.
         numberOfSharedAudioTags={0}
@@ -53,11 +70,12 @@ function StagePlayer({ stageIndex }) {
         // When true, the Player moves focus to its play button every time playback
         // starts or stops, pulling keyboard users away from the quiz.
         spaceKeyToPlayOrPause={false}
+        // No playback UI: the animation is short (4s), plays once, and stops on its
+        // last frame, which shows the whole scene.
         autoPlay={!reduced}
-        // Stay on the last frame, which shows the whole loop; frame 0 is still empty.
         moveToBeginningWhenEnded={false}
         initialFrame={reduced ? DURATION - 1 : 0}
-        style={{ width: '100%' }}
+        style={{ width: '100%', height: '100%' }}
       />
     </div>
   );
@@ -93,6 +111,7 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
 
   return (
     <section className="game__panel" aria-labelledby="stage-title">
+      <StagePlayer stageIndex={stageIndex} />
       <div className="game__stage">
         <div className="game__media">
           <p className="game__progress">
@@ -101,7 +120,6 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
           <h1 id="stage-title" className="game__title" tabIndex={-1} ref={headingRef}>
             {stage.title}
           </h1>
-          <StagePlayer stageIndex={stageIndex} />
           <p className="game__text">{stage.summary}</p>
         </div>
         <div className="game__quiz">
