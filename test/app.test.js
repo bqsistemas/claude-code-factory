@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
@@ -281,38 +281,8 @@ describe('job 004: one-page game with animated octopus agent characters', () => 
 describe('job 005: fullscreen 3D factory scene with the octopus agent crew', () => {
   const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-  test('AC-1: package.json adds three, @remotion/three, and @react-three/fiber as exact devDependencies', async () => {
-    const pkg = JSON.parse(await read('../package.json'));
-    for (const name of ['three', '@remotion/three', '@react-three/fiber']) {
-      assert.match(pkg.devDependencies?.[name] ?? '', /^\d/, `${name} is an exact-pinned devDependency`);
-    }
-    assert.equal(pkg.devDependencies['@remotion/three'], pkg.devDependencies.remotion, '@remotion/three matches remotion');
-    assert.ok(!pkg.dependencies || Object.keys(pkg.dependencies).length === 0, 'no runtime dependencies');
-  });
-
-  test('AC-6: the game sources build the 3D scene from the shared avatars and scene layout', async () => {
-    const octopus3d = await read('../src/game/Octopus3D.jsx');
-    assert.match(octopus3d, /from\s+'\.\.\/\.\.\/factory\/avatars\.js'/, 'Octopus3D imports ../../factory/avatars.js');
-    assert.match(octopus3d, /import\s*\{[^}]*\buseCurrentFrame\b[^}]*\}\s*from\s*'remotion'/, 'Octopus3D imports useCurrentFrame from remotion');
-
-    const loop = await read('../src/game/FactoryLoop.jsx');
-    assert.match(loop, /import\s*\{[^}]*\bThreeCanvas\b[^}]*\}\s*from\s*'@remotion\/three'/, 'FactoryLoop imports ThreeCanvas');
-    assert.match(loop, /from\s+'\.\/scene\.js'/, 'FactoryLoop imports ./scene.js');
-    for (const tag of ['<ThreeCanvas', '<Octopus3D', '<Octopus']) {
-      assert.ok(loop.includes(tag), `FactoryLoop renders ${tag}`);
-    }
-
-    const main = await read('../src/game/main.jsx');
-    assert.match(main, /className="game__scene"/, 'main.jsx uses game__scene');
-    assert.match(main, /compositionSize\(/, 'main.jsx calls compositionSize(');
-    const player = main.match(/<Player\b[\s\S]*?\/>/)?.[0];
-    assert.ok(player, 'main.jsx renders a <Player>');
-    assert.doesNotMatch(player, /\bcontrols\b/, 'Player has no controls prop');
-  });
-
-  test('AC-7: the bundle includes three.js and the avatar colors; .game__scene is a fixed full-viewport layer', async () => {
+  test('AC-7: the bundle includes the avatar colors; .game__scene is a fixed full-viewport layer', async () => {
     const bundle = await read('../public/game.js');
-    assert.ok(bundle.includes('__THREE__'), 'three.js is bundled');
     for (const [name, { color }] of Object.entries(AVATARS)) {
       assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
     }
@@ -338,18 +308,6 @@ describe('job 005: fullscreen 3D factory scene with the octopus agent crew', () 
 describe('job 006: camera framing and flow labels', () => {
   const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-  test('AC-5: FactoryLoop uses the scene projection helpers and renders hidden flow labels', async () => {
-    const loop = await read('../src/game/FactoryLoop.jsx');
-    const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
-    for (const name of ['cameraFov', 'projectPoint', 'toScreen']) {
-      assert.match(sceneImport, new RegExp(`\\b${name}\\b`), `FactoryLoop imports ${name} from ./scene.js`);
-    }
-    for (const text of ['aria-hidden', 'stage.title', 'Retrabajo: cambios pedidos']) {
-      assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
-    }
-    assert.ok(!loop.includes('Math.PI / 8'), 'the fov formula moved out of FactoryLoop');
-  });
-
   test('AC-6: the committed game bundle contains the rework label', async () => {
     const bundle = await read('../public/game.js');
     assert.ok(bundle.includes('Retrabajo: cambios pedidos'), 'bundle contains the rework label');
@@ -365,6 +323,125 @@ describe('job 006: camera framing and flow labels', () => {
       'Play the factory learning game',
       'Meet the octopus agent crew',
       'Tour the 3D factory floor',
+    ]) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+  });
+});
+
+describe('job 007: iso-glow factory floor', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const questItems = async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    return questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+  };
+
+  test('AC-1: the three.js packages, Octopus3D, and every three.js import are gone', async () => {
+    const pkg = JSON.parse(await read('../package.json'));
+    for (const name of ['three', '@remotion/three', '@react-three/fiber']) {
+      assert.equal(pkg.devDependencies?.[name], undefined, `${name} is not a devDependency`);
+    }
+    assert.equal(pkg.devDependencies['@remotion/player'], pkg.devDependencies.remotion, 'player matches remotion');
+    assert.ok(!pkg.dependencies || Object.keys(pkg.dependencies).length === 0, 'no runtime dependencies');
+
+    const gameDir = new URL('../src/game/', import.meta.url);
+    const files = await readdir(gameDir);
+    assert.ok(!files.includes('Octopus3D.jsx'), 'src/game/Octopus3D.jsx is deleted');
+    for (const file of files) {
+      const source = await readFile(new URL(file, gameDir), 'utf8');
+      assert.doesNotMatch(
+        source,
+        /from\s*['"](three|@remotion\/three|@react-three\/fiber)['"]/,
+        `${file} imports nothing from three.js packages`,
+      );
+    }
+
+    const bundle = await read('../public/game.js');
+    assert.ok(!bundle.includes('__THREE__'), 'three.js is not bundled');
+  });
+
+  test('AC-5: FactoryLoop draws an accessible SVG iso-glow scene from the iso kernel', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    assert.match(loop, /from\s*'remotion'/, 'imports remotion');
+    const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
+    for (const name of ['iso', 'FLOOR_VIEWBOX']) {
+      assert.match(sceneImport, new RegExp(`\\b${name}\\b`), `imports ${name} from ./scene.js`);
+    }
+    for (const text of [
+      '<svg',
+      'role="img"',
+      'aria-label',
+      'iso-scene',
+      'iso-hot',
+      'filterUnits="userSpaceOnUse"',
+      'url(#iso-bloom)',
+      'stage.title',
+      'Retrabajo: cambios pedidos',
+      '<Octopus',
+    ]) {
+      assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
+    }
+    for (const text of ['<style', 'ThreeCanvas', 'Octopus3D', 'getContext(']) {
+      assert.ok(!loop.includes(text), `FactoryLoop does not contain ${text}`);
+    }
+
+    const main = await read('../src/game/main.jsx');
+    assert.match(main, /className="game__scene"/, 'main.jsx uses game__scene');
+    assert.match(main, /compositionSize\(/, 'main.jsx calls compositionSize(');
+    const player = main.match(/<Player\b[\s\S]*?\/>/)?.[0];
+    assert.ok(player, 'main.jsx renders a <Player>');
+    assert.doesNotMatch(player, /\bcontrols\b/, 'Player has no controls prop');
+  });
+
+  test('AC-6: styles.css defines the iso-glow tokens and hairline classes and keeps the scene layer', async () => {
+    const css = await (await fetch(`${baseUrl}/styles.css`)).text();
+    const root = css.match(/:root\s*\{([^}]*)\}/)?.[1] ?? '';
+    assert.match(root, /--iso-accent\s*:/, ':root defines --iso-accent');
+
+    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+    assert.ok(
+      rules.some((r) => r.selector.includes('.iso-scene') && r.selector.includes('.iso-hot') && r.body.includes('var(--iso-accent')),
+      'an .iso-scene .iso-hot rule uses var(--iso-accent',
+    );
+    assert.ok(
+      rules.some((r) => r.selector.includes('.iso-scene') && /vector-effect:\s*non-scaling-stroke/.test(r.body)),
+      'an .iso-scene rule sets vector-effect: non-scaling-stroke',
+    );
+
+    const scene = [...css.matchAll(/^\.game__scene\s*\{([^}]*)\}/gm)].map((m) => m[1]);
+    assert.ok(
+      scene.some((body) => /position:\s*fixed/.test(body) && /inset:\s*0/.test(body) && /pointer-events:\s*none/.test(body)),
+      '.game__scene rule with position: fixed, inset: 0, pointer-events: none',
+    );
+  });
+
+  test('AC-7: /game credits ISO-GLOW without inline code, and the bundle carries the scene', async () => {
+    const html = await (await fetch(`${baseUrl}/game`)).text();
+    const credit = html.match(/<a\s[^>]*href="https:\/\/iso-glow\.vercel\.app"[^>]*>([\s\S]*?)<\/a>/);
+    assert.ok(credit, 'links to https://iso-glow.vercel.app');
+    assert.match(credit[1], /Made with ISO-GLOW/, 'credit text');
+    assert.equal(html.match(/<script/gi).length, 1, 'exactly one script');
+    assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
+
+    const bundle = await read('../public/game.js');
+    for (const text of ['Retrabajo: cambios pedidos', 'iso-scene']) {
+      assert.ok(bundle.includes(text), `bundle contains ${text}`);
+    }
+    for (const [name, { color }] of Object.entries(AVATARS)) {
+      assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
+    }
+  });
+
+  test('AC-8: the quest log gains the iso-glow item and keeps the earlier ones', async () => {
+    const items = await questItems();
+    for (const text of [
+      'Light up the iso-glow factory floor',
+      'Build the landing page',
+      'Play the factory learning game',
+      'Meet the octopus agent crew',
+      'Tour the 3D factory floor',
+      'Follow the labeled factory flow',
     ]) {
       assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
     }
