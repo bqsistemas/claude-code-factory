@@ -1,8 +1,8 @@
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { STAGES } from '../src/game/engine.js';
-import { STATIONS, cameraFor, compositionSize, packagePosition } from '../src/game/scene.js';
+import { STATIONS, cameraFor, cameraFov, compositionSize, packagePosition, projectPoint, toScreen } from '../src/game/scene.js';
 
 const isFiniteTriple = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -73,4 +73,60 @@ test('AC-5: compositionSize keeps the viewport aspect ratio, caps the long side 
   for (const [w, h] of [[0, 720], [NaN, 720], [-5, 720], [1280, 0], [1280, Infinity], [undefined, 720]]) {
     assert.deepEqual(compositionSize(w, h), { width: 1280, height: 720 }, `${w}x${h} fallback`);
   }
+});
+
+describe('job 006: camera framing and flow labels', () => {
+  const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) <= 1e-9, `${label}: ${actual} vs ${expected}`);
+
+  test('AC-1: projectPoint projects through the camera like three.js lookAt with up +y', () => {
+    const camera = { position: [0, 0, 10], target: [0, 0, 0] };
+    const p = projectPoint(camera, [2, 1, 0], 90, 2);
+    near(p.x, 0.1, 'x');
+    near(p.y, 0.1, 'y');
+    near(p.depth, 10, 'depth');
+    assert.ok(projectPoint(camera, [0, 0, 20], 90, 2).depth <= 0, 'point behind the camera has depth <= 0');
+
+    STATIONS.forEach((_, i) => {
+      const cam = cameraFor(i);
+      const center = projectPoint(cam, cam.target, 45, 16 / 9);
+      near(center.x, 0, `stage ${i} target x`);
+      near(center.y, 0, `stage ${i} target y`);
+      assert.ok(center.depth > 0, `stage ${i} target in front of the camera`);
+      const right = projectPoint(cam, cam.target.map((v, k) => v + [1, 0, 0][k]), 45, 16 / 9);
+      assert.ok(right.x > 0, `stage ${i} +x projects to the right`);
+    });
+  });
+
+  test('AC-2: cameraFov is 45 for landscape and invalid input, wider (at most 70) for portrait', () => {
+    assert.equal(cameraFov(16 / 9), 45);
+    assert.equal(cameraFov(1), 45);
+    const portrait = cameraFov(390 / 844);
+    assert.ok(portrait > 45 && portrait <= 70, `portrait fov ${portrait}`);
+    for (const aspect of [0, -1, NaN]) assert.equal(cameraFov(aspect), 45, `aspect ${aspect}`);
+  });
+
+  test('AC-3: each stage shows its station and both neighbors inside the middle of the view', () => {
+    for (const [w, h] of [[1920, 962], [1280, 720], [1024, 640]]) {
+      const aspect = w / h;
+      const fov = cameraFov(aspect);
+      STATIONS.forEach((_, i) => {
+        const cam = cameraFor(i);
+        for (const j of [i - 1, i, i + 1]) {
+          if (j < 0 || j >= STATIONS.length) continue;
+          const label = `${w}x${h} stage ${i} station ${j}`;
+          const p = projectPoint(cam, STATIONS[j].position, fov, aspect);
+          assert.ok(p.depth > 0, `${label}: depth ${p.depth}`);
+          assert.ok(Math.abs(p.x) <= 0.5, `${label}: x ${p.x}`);
+          assert.ok(Math.abs(p.y) <= 0.5, `${label}: y ${p.y}`);
+          if (j !== i) assert.ok(Math.abs(p.x) >= 0.2, `${label}: neighbor x ${p.x} is apart from the current station`);
+        }
+      });
+    }
+  });
+
+  test('AC-4: toScreen maps NDC to composition pixels around the shifted view center', () => {
+    assert.deepEqual(toScreen({ x: 0, y: 0 }, 1920, 962, 700, 600), { x: 700, y: 600 });
+    assert.deepEqual(toScreen({ x: 1, y: 1 }, 1920, 962, 700, 600), { x: 1660, y: 119 });
+    assert.deepEqual(toScreen({ x: -0.5, y: -0.5 }, 1920, 962, 700, 600), { x: 220, y: 840.5 });
+  });
 });
