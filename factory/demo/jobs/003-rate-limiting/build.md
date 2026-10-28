@@ -1,6 +1,6 @@
 STATUS: READY
 
-# Build: Rate limiting (after round 1)
+# Build: Rate limiting (round 3)
 
 ## Changes
 - `src/middleware/rateLimit.js`: limiter, 100 req / 60 s, JSON 429 body.
@@ -15,12 +15,15 @@ STATUS: READY
 | AC-3 | test/rateLimit.test.js "AC-3: per IP"        | pass   |
 | AC-4 | test/rateLimit.test.js "AC-4: /health open"  | pass   |
 
-## Test run
-`npm test`: pass 18, fail 0
+## Checks
+`factory/checks.sh`: pass 18, fail 0
 
 ## Review responses
 - security: spoofable `X-Forwarded-For` → `trust proxy` limited to 1 hop.
 - code: AC-4 was untested → added the test.
+
+## PR
+#9, pushed 4e1c2aa
 
 ## Commits
 - 4e1c2aa fix: trust only one proxy hop for client IP

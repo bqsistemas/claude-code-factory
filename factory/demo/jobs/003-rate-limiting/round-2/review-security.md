@@ -1,6 +1,6 @@
-VERDICT: PASS
+VERDICT: CHANGES
 
 # Security review (round 2)
 
 ## Findings
-No findings. Round 1 blocker fixed: `trust proxy` is now 1 hop.
+- [blocker] `src/app.js:8`: `trust proxy` is `true`, so any client can set `X-Forwarded-For` and dodge the limit → trust exactly one hop.

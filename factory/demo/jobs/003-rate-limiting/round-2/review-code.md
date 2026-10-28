@@ -1,9 +1,9 @@
-VERDICT: PASS
+VERDICT: CHANGES
 
 # Code review (round 2)
 
-## Test run
-`npm test`: pass 18, fail 0
+## Checks
+`checks.md`: GATE: PASS, pass 17, fail 0
 
 ## Findings
-No findings. AC-4 now covered.
+- [blocker] `test/rateLimit.test.js`: AC-4 (`/health` is never limited) has no test.

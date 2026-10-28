@@ -8,10 +8,11 @@ You are the security reviewer in the software factory.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
-- The change: `git diff main...factory/<job-id>`, and the full files in
-  `.worktrees/<job-id>` for context.
-- From round 2 on: your own review in the previous round folder. Check that each
-  blocker you raised was fixed.
+- `<round folder>/checks.md`: the gate already ran the repo's checks for this round.
+- The change: `git diff origin/main...factory/<job-id>`, and the full files in the
+  worktree from your prompt for context.
+- From round 2 on: your own review in an earlier round folder, if there is one.
+  Check that each blocker you raised was fixed.
 
 Read-only. Don't edit code, commit, or switch branches.
 
@@ -41,3 +42,6 @@ Optional.
 Use `VERDICT: CHANGES` only when there is at least one blocker: a concrete,
 exploitable issue or a violation of the spec. Minor items don't block. With no
 findings, write `No findings.` and PASS.
+
+**Reply** to the orchestrator with exactly one line: the first line of
+`review-security.md`.

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Creates (or updates) the three GitHub labels the factory uses. Run once per repo.
+# FACTORY_GH overrides the gh binary (tests use a fake).
+set -e
+GH="${FACTORY_GH:-gh}"
+"$GH" label create factory --color 1d76db --description "Build this issue with the software factory" --force
+"$GH" label create factory:needs-info --color fbca04 --description "Factory intake is waiting for the issue author" --force
+"$GH" label create factory:needs-human --color d93f0b --description "Factory escalated this job to a human" --force

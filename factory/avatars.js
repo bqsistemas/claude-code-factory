@@ -29,6 +29,8 @@ export const OCTOPUS = Object.freeze({
 
 /** Per-agent body color and accessory path (same 32x32 viewBox). */
 export const AVATARS = Object.freeze({
+  // Clipboard on the right: triage at the door.
+  intake: Object.freeze({ color: '#64748b', accessory: 'M23 8.5h8V20h-8zM25 7h4v3h-4z' }),
   // Pencil held up on the right.
   'spec-writer': Object.freeze({ color: '#8b5cf6', accessory: 'M23.5 12.5l1-3.5 5.5-5.5 2 2-5.5 5.5z' }),
   // Hard hat: dome plus brim over the head.

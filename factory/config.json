@@ -1,0 +1,23 @@
+{
+  "repo": "https://github.com/bqsistemas/claude-code-factory",
+  "base": "origin/main",
+  "concurrency": 3,
+  "max_rounds": 3,
+  "models": { "intake": "fable", "spec-writer": "opus", "approver": "opus" },
+  "routing": {
+    "builder": { "low": "sonnet", "medium": "sonnet", "high": "opus" },
+    "reviewers": {
+      "code": { "always": true, "model": { "low": "haiku", "medium": "sonnet", "high": "sonnet" } },
+      "ux": { "surface": "ui", "model": "sonnet" },
+      "ui": { "surface": "ui", "model": "haiku" },
+      "security": { "surface": "security", "model": "opus" }
+    }
+  },
+  "prices": {
+    "fable": { "input": 0, "output": 0, "cache_write": 0, "cache_read": 0 },
+    "opus": { "input": 5, "output": 25, "cache_write": 6.25, "cache_read": 0.5 },
+    "sonnet": { "input": 3, "output": 15, "cache_write": 3.75, "cache_read": 0.3 },
+    "haiku": { "input": 1, "output": 5, "cache_write": 1.25, "cache_read": 0.1 }
+  },
+  "protected_tests": ["test/route.test.js", "test/job.test.js", "test/gate.test.js", "test/cost.test.js"]
+}

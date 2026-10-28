@@ -29,7 +29,7 @@ test('AC-8: docs/juego-factory.md has the required sections, every agent, and ru
   }
 
   const names = await readAgentNames();
-  assert.equal(names.length, 7, 'seven agents');
+  assert.equal(names.length, 8, 'eight agents');
   for (const name of names) {
     assert.ok(guide.includes(name), `guide names agent ${name}`);
   }

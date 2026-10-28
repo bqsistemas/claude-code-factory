@@ -48,10 +48,12 @@ test('AC-2: STAGES follow the loop order and match the agents in .claude/agents/
   );
   assert.ok(Object.isFrozen(STAGES), 'STAGES is frozen');
 
+  // The game still teaches the v1 loop, so it has no intake stage (job 012).
+  const agents = await readAgents();
+  assert.equal(agents.length, 8, 'eight agent files');
   const fromEngine = STAGES.flatMap((s) => s.agents).map(key).sort();
-  const fromFiles = (await readAgents()).map(key).sort();
-  assert.equal(fromFiles.length, 7, 'seven agent files');
-  assert.deepEqual(fromEngine, fromFiles, 'engine agents equal .claude/agents/ frontmatter');
+  const fromFiles = agents.filter(({ name }) => name !== 'intake').map(key).sort();
+  assert.deepEqual(fromEngine, fromFiles, 'engine agents equal .claude/agents/ frontmatter, excluding intake');
 
   for (const id of ['feature', 'wait-for-all', 'outcome']) {
     assert.deepEqual(STAGES.find((s) => s.id === id).agents, [], `${id} is orchestrator-only`);
