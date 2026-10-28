@@ -41,6 +41,23 @@ continúa. Si haces clic en una estación (o la eliges con Tab y presionas Enter
 Espacio), el recorrido salta a ella y se pausa para que leas su explicación. **Salir del
 loop** te devuelve a la pantalla inicial; el recorrido no suma ni resta puntos.
 
+En el recorrido la planta está viva: varios paquetes de features avanzan por la línea a
+la vez. Cada 2,5 segundos entra uno nuevo en la estación 1 y todos pasan de estación en
+estación. En la bifurcación, los paquetes con `APPROVE` hacen merge a `main`: llegan a
+la plataforma de `main` y se funden en ella. Los paquetes con `ESCALATE` quedan en la
+cola de `needs-human`, apilados sobre su plataforma, hasta que una persona los revisa.
+Entonces recorren la ruta punteada de la persona y llegan a `main` más tarde. Es una
+animación fija que se repite en cada vuelta; no lee los jobs reales de `board.json`.
+
+Las cápsulas de los agentes se encienden con el color de su pulpo: por ejemplo, rojo
+para `review-security` y azul para `review-code`.
+
+El recorrido también tiene una melodía sintetizada en el navegador, sin archivos de
+audio. Cada etapa tiene su frase de 16 tiempos, que dura lo mismo que la etapa (10
+segundos), y los paquetes entran al ritmo de la melodía. El sonido arranca al presionar
+**Ver el loop**. El botón **Silenciar** lo apaga y **Activar sonido** lo vuelve a
+encender. **Pausar** y **Salir del loop** también detienen la melodía.
+
 ## Etapas del factory
 
 ### 1. Pedido de feature

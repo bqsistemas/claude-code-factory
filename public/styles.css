@@ -659,15 +659,18 @@ main {
   pointer-events: all !important;
 }
 
-.iso-hits .iso-hit:hover,
+/* Keyboard focus only: a pointer press never focuses a station (FactoryLoop
+   prevents it on mousedown) and hovering draws nothing, so a click leaves no
+   lines around the station. */
 .iso-hits .iso-hit:focus-visible {
   stroke: var(--iso-accent);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
-/* The accent hairline above replaces the default focus outline. */
-.iso-hits .iso-hit:focus-visible {
+/* The accent hairline above replaces the default focus outline, which would
+   draw a rectangle around the polygon. */
+.iso-hits .iso-hit:focus {
   outline: none;
 }
 
