@@ -634,3 +634,128 @@ describe('job 009: approval fork on the iso floor', () => {
     assert.ok(guide.includes('bifurcación'), 'guide mentions the bifurcación');
   });
 });
+
+describe('job 010: living factory pipeline', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const cssRules = (css) => [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+  // The source of a top-level function, up to the next top-level function, const, or export.
+  const topLevel = (source, name) =>
+    source.match(new RegExp(`^function ${name}\\b[\\s\\S]*?(?=^(?:function|export|const)\\b)`, 'm'))?.[0] ?? '';
+
+  test('AC-1: the floor caption no longer repeats the stage number and title', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    const caption = topLevel(loop, 'Caption');
+    assert.ok(caption.length > 0, 'FactoryLoop.jsx has a Caption function');
+    for (const text of ['stage.title', 'STAGES.length', 'Etapa']) {
+      assert.ok(!caption.includes(text), `Caption does not contain ${text}`);
+    }
+    assert.ok(caption.includes('Escribe'), 'Caption keeps the output file');
+    assert.ok(loop.includes('stage.title'), 'station labels still use stage.title');
+
+    const main = await read('../src/game/main.jsx');
+    const tour = topLevel(main, 'TourScreen');
+    assert.ok(tour.includes('Loop guiado'), 'TourScreen renders Loop guiado');
+    assert.match(tour, /<h1\b[^>]*>\s*\{stage\.title\}\s*<\/h1>/, 'TourScreen renders the stage title h1');
+  });
+
+  test('AC-2: a click never outlines a station; keyboard focus keeps the accent hairline', async () => {
+    const css = await (await fetch(`${baseUrl}/styles.css`)).text();
+    const rules = cssRules(css);
+    assert.ok(
+      rules.some((r) => /\.iso-hit:focus(?![-\w])/.test(r.selector) && /outline:\s*none/.test(r.body)),
+      'an .iso-hit:focus rule sets outline: none',
+    );
+    assert.ok(
+      !rules.some((r) => r.selector.includes('.iso-hit:hover') && /\bstroke[\w-]*\s*:/.test(r.body)),
+      'no .iso-hit:hover rule sets a stroke',
+    );
+    assert.ok(
+      rules.some((r) => r.selector.includes('.iso-hit:focus-visible') && r.body.includes('var(--iso-accent')),
+      'an .iso-hit:focus-visible rule still uses var(--iso-accent',
+    );
+
+    const hits = topLevel(await read('../src/game/FactoryLoop.jsx'), 'StationHits');
+    for (const text of ['onMouseDown', 'preventDefault', 'onClick', 'onKeyDown', 'tabIndex={0}', 'role="button"']) {
+      assert.ok(hits.includes(text), `StationHits contains ${text}`);
+    }
+  });
+
+  test('AC-3: lit pods use their avatar colour, and the bundle carries every reviewer colour', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    assert.match(
+      loop,
+      /import\s*\{[^}]*\bAVATARS\b[^}]*\}\s*from\s*'\.\.\/\.\.\/factory\/avatars\.js'/,
+      'FactoryLoop imports AVATARS from ../../factory/avatars.js',
+    );
+    assert.match(topLevel(loop, 'Pod'), /AVATARS\[[^\]]+\]\??\.color/, 'Pod reads AVATARS[name].color');
+    const bundle = await read('../public/game.js');
+    for (const color of ['#e5484d', '#d6409f', '#0d9488', '#3b82f6']) {
+      assert.ok(bundle.includes(color), `bundle contains ${color}`);
+    }
+  });
+
+  test('AC-7: the tour Player runs the pipeline and the melody; the quiz Player does not', async () => {
+    const main = await read('../src/game/main.jsx');
+    const tour = topLevel(main, 'TourScreen');
+    const tourPlayer = tour.match(/<Player\b[\s\S]*?\/>/)?.[0] ?? '';
+    assert.match(tourPlayer, /pipeline:\s*true/, 'TourScreen passes pipeline: true to its Player');
+    assert.match(main, /import\s*\{[^}]*\bphraseFor\b[^}]*\}\s*from\s*'\.\/melody\.js'/, 'imports phraseFor from ./melody.js');
+    assert.match(main, /import\s*\{[^}]*\bschedulePhrase\b[^}]*\}\s*from\s*'\.\/sound\.js'/, 'imports schedulePhrase from ./sound.js');
+    for (const text of ['AudioContext', '.pause()', 'Silenciar', 'Activar sonido']) {
+      assert.ok(main.includes(text), `main.jsx contains ${text}`);
+    }
+    assert.ok(!topLevel(main, 'StagePlayer').includes('pipeline'), 'the quiz StagePlayer does not pass pipeline');
+    const players = main.match(/<Player\b[\s\S]*?\/>/g) ?? [];
+    assert.ok(players.length >= 2, 'quiz and tour Players');
+    for (const player of players) {
+      assert.match(player, /numberOfSharedAudioTags=\{0\}/, 'Player keeps numberOfSharedAudioTags={0}');
+      assert.doesNotMatch(player, /\bcontrols\b/, 'Player has no controls prop');
+    }
+
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    assert.match(loop, /import\s*\{[^}]*\bpipelineAt\b[^}]*\}\s*from\s*'\.\/pipeline\.js'/, 'FactoryLoop imports pipelineAt');
+    const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
+    assert.match(sceneImport, /\bHUMAN_ROUTE\b/, 'FactoryLoop imports HUMAN_ROUTE from ./scene.js');
+  });
+
+  test('AC-8: /game keeps its CSP and markup, the bundle has the sound toggle, no audio files, docs and quest log updated', async () => {
+    const res = await fetch(`${baseUrl}/game`);
+    assert.equal(res.headers.get('content-security-policy'), "default-src 'self'", 'same CSP header');
+    const html = await res.text();
+    assert.equal(html.match(/<script/gi).length, 1, 'exactly one script');
+    assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
+
+    const bundle = await read('../public/game.js');
+    for (const text of ['Silenciar', 'Activar sonido']) {
+      assert.ok(bundle.includes(text), `bundle contains ${text}`);
+    }
+
+    const files = (await readdir(new URL('../public/', import.meta.url))).sort();
+    assert.deepEqual(files, ['game.html', 'game.js', 'index.html', 'styles.css'], 'no new files under public/');
+    const app = await read('../src/app.js');
+    const routes = [...app.matchAll(/\['(\/[^']*)',\s*\{/g)].map((m) => m[1]);
+    assert.deepEqual(routes, ['/', '/styles.css', '/game', '/game.js'], 'no new routes');
+
+    const guide = await read('../docs/juego-factory.md');
+    for (const text of ['main', 'needs-human', 'melodía']) {
+      assert.ok(guide.includes(text), `guide mentions ${text}`);
+    }
+
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    for (const text of [
+      'Watch the living factory pipeline',
+      'Build the landing page',
+      'Play the factory learning game',
+      'Meet the octopus agent crew',
+      'Tour the 3D factory floor',
+      'Follow the labeled factory flow',
+      'Light up the iso-glow factory floor',
+      'Take the guided factory loop tour',
+      'See the approval fork on the factory floor',
+    ]) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+  });
+});

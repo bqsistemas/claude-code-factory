@@ -15,12 +15,37 @@ import {
   currentQuestion,
   maxScore,
 } from './engine.js';
+import { phraseFor } from './melody.js';
+import { schedulePhrase } from './sound.js';
 import { TOUR_STEP_MS, createTour, nextStep, selectStep, togglePlaying } from './tour.js';
 
-// At most 5 seconds (WCAG 2.2.2): the Player has no pause control.
+// At most 5 seconds (WCAG 2.2.2): the quiz Player has no pause control.
 const DURATION = 120;
+// The tour Player plays one whole step at 30 fps; "Pausar" pauses it (WCAG 2.2.2).
+const TOUR_FRAMES = (TOUR_STEP_MS * 30) / 1000;
+// After a station is selected the paused tour shows this frame: the station is
+// fully lit (frames 0-15) and the belt pulse has arrived (frame 75).
+const LIT_FRAME = 75;
+// Melody gain: quiet, well under sound.js's 0.2 cap.
+const VOLUME = 0.06;
 const stageIndexOf = (stageId) => STAGES.findIndex((s) => s.id === stageId);
 const stageTitleOf = (stageId) => STAGES[stageIndexOf(stageId)].title;
+
+// Creates the tour's AudioContext, or resumes a suspended one. Call it only
+// inside a click handler: browsers (Safari above all) keep audio started
+// anywhere else suspended. Returns null where Web Audio is missing.
+function openAudio(context) {
+  try {
+    if (context && context.state !== 'closed') {
+      if (context.state === 'suspended') context.resume()?.catch?.(() => {});
+      return context;
+    }
+    const AudioContextClass = window.AudioContext ?? window.webkitAudioContext;
+    return AudioContextClass ? new AudioContextClass() : null;
+  } catch {
+    return null;
+  }
+}
 
 function prefersReducedMotion() {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -175,37 +200,102 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
 }
 
 // The guided loop tour: the floor plays stage by stage on its own, wrapping after
-// the last one. Clicking (or Enter/Space on) a station jumps to it and pauses.
-// The tour never answers a question and never changes the score.
-function TourScreen({ onExit }) {
+// the last one, with the living pipeline on the floor and a melody in time.
+// Clicking (or Enter/Space on) a station jumps to it and pauses. The tour never
+// answers a question and never changes the score. `audio` is the AudioContext
+// the "Ver el loop" click created (or null); the tour closes it on the way out.
+function TourScreen({ onExit, audio }) {
   const [tour, setTour] = useState(createTour);
+  const [soundOn, setSoundOn] = useState(true);
   const headingRef = useFocusOnMount();
   const playerRef = useRef(null);
+  const audioRef = useRef(audio);
+  const phraseRef = useRef(null);
+  const soundRef = useRef(true);
+  // The step on screen and when it started playing, for unmuting mid-step.
+  const stepRef = useRef({ index: 0, playing: false, startedAt: 0 });
   const reduced = prefersReducedMotion();
   const { width, height } = useCompositionSize();
   const stage = STAGES[tour.index];
 
-  // Auto-advance. Cleared on pause, on every step change, and on unmount.
-  useEffect(() => {
-    if (!tour.playing) return undefined;
-    const timer = setTimeout(() => setTour((t) => nextStep(t)), TOUR_STEP_MS);
-    return () => clearTimeout(timer);
-  }, [tour.index, tour.playing]);
+  const stopPhrase = useCallback(() => {
+    phraseRef.current?.stop();
+    phraseRef.current = null;
+  }, []);
 
-  // The Player stays mounted across steps (so a focused station keeps focus);
-  // each new step restarts its animation, or shows its last frame.
+  // Plays step `index`'s phrase as if it started `elapsedMs` ago, so it stays on
+  // the beat; notes already past are skipped.
+  const startPhrase = useCallback(
+    (index, elapsedMs = 0) => {
+      stopPhrase();
+      const context = audioRef.current;
+      if (!soundRef.current || !context || context.state === 'closed') return;
+      const notes = phraseFor(index).filter((note) => note.startMs >= elapsedMs);
+      phraseRef.current = schedulePhrase(context, notes, { when: context.currentTime - elapsedMs / 1000, volume: VOLUME });
+    },
+    [stopPhrase],
+  );
+
+  // One rule for every step that starts playing (entering the tour, auto-advance,
+  // "Reanudar"): the step timer, the Player from frame 0, and the step's phrase
+  // start together. "Pausar" pauses the Player and stops the phrase. The Player
+  // stays mounted across steps, so a focused station keeps focus.
   useEffect(() => {
     const player = playerRef.current;
-    if (!player) return;
-    if (reduced) {
-      player.seekTo(DURATION - 1);
-    } else {
-      player.seekTo(0);
-      player.play();
+    stepRef.current = { index: tour.index, playing: tour.playing, startedAt: performance.now() };
+    if (!tour.playing) {
+      player?.pause();
+      stopPhrase();
+      return undefined;
     }
-  }, [tour.index, reduced]);
+    if (reduced) {
+      player?.seekTo(TOUR_FRAMES - 1);
+    } else {
+      player?.seekTo(0);
+      player?.play();
+    }
+    startPhrase(tour.index);
+    const timer = setTimeout(() => setTour((t) => nextStep(t)), TOUR_STEP_MS);
+    return () => {
+      clearTimeout(timer);
+      stopPhrase();
+    };
+  }, [tour.index, tour.playing, reduced, startPhrase, stopPhrase]);
 
-  const onSelect = useCallback((i) => setTour((t) => selectStep(t, i)), []);
+  // Leaving the tour ("Salir del loop") silences it and releases the audio device.
+  useEffect(
+    () => () => {
+      phraseRef.current?.stop();
+      audioRef.current?.close?.()?.catch?.(() => {});
+    },
+    [],
+  );
+
+  // A selected station shows fully lit, paused, without its phrase.
+  const onSelect = useCallback(
+    (i) => {
+      setTour((t) => selectStep(t, i));
+      const player = playerRef.current;
+      player?.pause();
+      player?.seekTo(reduced ? TOUR_FRAMES - 1 : LIT_FRAME);
+      stopPhrase();
+    },
+    [reduced, stopPhrase],
+  );
+
+  const onToggleSound = () => {
+    if (soundRef.current) {
+      soundRef.current = false;
+      setSoundOn(false);
+      stopPhrase();
+      return;
+    }
+    audioRef.current = openAudio(audioRef.current);
+    soundRef.current = true;
+    setSoundOn(true);
+    const step = stepRef.current;
+    if (step.playing) startPhrase(step.index, performance.now() - step.startedAt);
+  };
 
   return (
     <section className="game__panel" aria-labelledby="tour-title">
@@ -213,17 +303,16 @@ function TourScreen({ onExit }) {
         <Player
           ref={playerRef}
           component={FactoryLoop}
-          inputProps={{ stageIndex: tour.index, onSelect }}
-          durationInFrames={DURATION}
+          inputProps={{ stageIndex: tour.index, onSelect, pipeline: true }}
+          durationInFrames={TOUR_FRAMES}
           fps={30}
           compositionWidth={width}
           compositionHeight={height}
           numberOfSharedAudioTags={0}
           initiallyMuted
           spaceKeyToPlayOrPause={false}
-          autoPlay={!reduced}
           moveToBeginningWhenEnded={false}
-          initialFrame={reduced ? DURATION - 1 : 0}
+          initialFrame={reduced ? TOUR_FRAMES - 1 : 0}
           style={{ width: '100%', height: '100%' }}
         />
       </div>
@@ -240,6 +329,9 @@ function TourScreen({ onExit }) {
         <p>
           <button type="button" className="game__button" onClick={() => setTour((t) => togglePlaying(t))}>
             {tour.playing ? 'Pausar' : 'Reanudar'}
+          </button>{' '}
+          <button type="button" className="game__button" onClick={onToggleSound}>
+            {soundOn ? 'Silenciar' : 'Activar sonido'}
           </button>{' '}
           <button type="button" className="game__button" onClick={onExit}>
             Salir del loop
@@ -282,6 +374,8 @@ function Game() {
   // The question just answered and the result, kept while feedback is shown,
   // because `state` has already moved on to the next question.
   const [last, setLast] = useState(null);
+  // The tour's AudioContext, created by the "Ver el loop" click itself.
+  const [tourAudio, setTourAudio] = useState(null);
 
   useEffect(() => {
     const score = document.getElementById('score');
@@ -289,11 +383,27 @@ function Game() {
   }, [state.score]);
 
   if (screen === 'intro') {
-    return <Intro onStart={() => setScreen('question')} onTour={() => setScreen('tour')} />;
+    return (
+      <Intro
+        onStart={() => setScreen('question')}
+        onTour={() => {
+          setTourAudio(openAudio(null));
+          setScreen('tour');
+        }}
+      />
+    );
   }
 
   if (screen === 'tour') {
-    return <TourScreen onExit={() => setScreen('intro')} />;
+    return (
+      <TourScreen
+        audio={tourAudio}
+        onExit={() => {
+          setTourAudio(null);
+          setScreen('intro');
+        }}
+      />
+    );
   }
 
   if (screen === 'finished') {

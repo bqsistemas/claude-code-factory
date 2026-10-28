@@ -1,19 +1,25 @@
 // Remotion composition: the factory floor as an iso-glow figure. A dark
 // isometric hairline drawing (SVG) of every station in the loop, where only what
 // is live glows in the accent color: the current station, its agents, and the
-// belt the job package rides in on. An HTML caption in the top-left corner keeps
-// the stage, agents, models, and output file readable as text.
+// belt the job package rides in on. Lit agent pods glow in their avatar colour.
+// On the guided tour (`pipeline`), many packages flow through the line at once
+// (see pipeline.js). An HTML caption in the top-left corner keeps the agents,
+// models, and output file readable as text.
 // Colors come from CSS classes and :root tokens in styles.css (never a style element:
 // the CSP blocks it). Caption styles are React style objects (applied through the
 // CSSOM, allowed by the CSP) and reuse the page's :root custom properties.
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 
+import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
 import { Octopus } from './Octopus.jsx';
+import { pipelineAt } from './pipeline.js';
+import { TOUR_STEP_MS } from './tour.js';
 import {
   FLOOR,
   FLOOR_VIEWBOX,
   FORK,
+  HUMAN_ROUTE,
   PLATE,
   REWORK_POINTS,
   STATIONS,
@@ -27,8 +33,6 @@ const color = {
   bg: 'var(--color-bg, #0b0d17)',
   panel: 'rgba(21, 26, 46, 0.9)', // --color-panel, near-solid for text contrast
   text: 'var(--color-text, #e6edff)',
-  muted: 'var(--color-muted, #a9b4d0)',
-  cyan: 'var(--color-cyan, #00e5ff)',
   magenta: 'var(--color-magenta, #ff5ad9)',
   green: 'var(--color-green, #39ff88)',
 };
@@ -62,10 +66,11 @@ function screenLayout(stage, width, height) {
   const captionTop = HUD_HEIGHT + 8;
   const freeRight = wide ? width - panelWidth(width) : width;
   const captionWidth = Math.min(freeRight - 2 * MARGIN, 760 * unit);
-  // Rough caption height: heading lines plus one row per two or three chips.
+  // Rough caption height: padding and the output line, plus one row per two or
+  // three chips. The stage number and title live in the panel, not here.
   const perRow = Math.max(1, Math.floor(captionWidth / (260 * unit)));
   const rows = stage.agents.length === 0 ? 0.6 : Math.ceil(stage.agents.length / perRow);
-  const captionBottom = captionTop + (115 + rows * 42) * unit;
+  const captionBottom = captionTop + (58 + rows * 42) * unit;
   const freeBottom = wide ? height : height * (1 - BOTTOM_PANEL);
   const top = captionBottom + 8;
   return {
@@ -263,17 +268,28 @@ function Belt({ from, to }) {
 }
 
 // One agent pod: a small box on the back of the deck with an LED on its front.
-function Pod({ position, lit }) {
+// Lit, the LED and its glow take the agent's avatar colour. The colour is a
+// style (CSSOM, allowed by the CSP) so it wins over the .iso-led.iso-hot fill.
+function Pod({ name, position, lit }) {
   const [px, py, pz] = position;
   const [w, d, h] = FLOOR.podSize;
   const led = FRONT(px, py + d, pz + h);
+  const glow = AVATARS[name]?.color;
   return (
     <g>
       <IsoBox position={position} size={FLOOR.podSize} />
       <rect transform={led} x={3} y={3} width={w - 6} height={3} className="iso-led" />
       {lit > 0 && (
         <g opacity={lit} filter="url(#iso-glow)">
-          <rect transform={led} x={3} y={3} width={w - 6} height={3} className="iso-led iso-hot" />
+          <rect
+            transform={led}
+            x={3}
+            y={3}
+            width={w - 6}
+            height={3}
+            className="iso-led iso-hot"
+            style={glow ? { fill: glow } : undefined}
+          />
         </g>
       )}
     </g>
@@ -317,6 +333,7 @@ function Station({ station, stage, lit }) {
       {stage.agents.map((agent, k) => (
         <Pod
           key={agent.name}
+          name={agent.name}
           position={[x + FLOOR.podInset + k * FLOOR.podPitch, y + FLOOR.podInset, h]}
           lit={lit}
         />
@@ -361,6 +378,46 @@ function JobPackage({ position }) {
   );
 }
 
+// The pipeline's packages (guided tour). A queued package waits unlit on the
+// ESCALATE pad; every other one is lit like the job package. A merging package
+// shrinks into the APPROVE pad and fades out.
+function PipelinePackage({ phase, position, merge }) {
+  const s = FLOOR.packageSize * (1 - merge);
+  if (s <= 0) return null;
+  const inset = (FLOOR.packageSize - s) / 2;
+  const [x, y, z] = [position[0] + inset, position[1] + inset, position[2]];
+  return (
+    <g opacity={1 - merge}>
+      <IsoBox position={[x, y, z]} size={[s, s, s]} className={phase === 'queued' ? undefined : 'iso-hot'} />
+      <g transform={TOP(x, y, z + s)}>
+        <line className="iso-wire" x1={s / 2} y1={0} x2={s / 2} y2={s} />
+      </g>
+    </g>
+  );
+}
+
+// Packages are painted after every station and pad: on the line they ride at
+// deck height in front of the pods, and off it they sit on or beside the pads,
+// which nothing stands in front of. Among themselves, back to front (and
+// bottom to top in the pile).
+function Pipeline({ time }) {
+  const packages = [...pipelineAt(time).packages].sort(
+    (a, b) => a.position.reduce((sum, v) => sum + v, 0) - b.position.reduce((sum, v) => sum + v, 0),
+  );
+  return packages.map((p) => <PipelinePackage key={p.id} {...p} />);
+}
+
+// The dotted hairline a human-approved package follows from the ESCALATE pad,
+// around the pads, to main (the APPROVE pad), with an arrowhead into main.
+function HumanRoute() {
+  return (
+    <g>
+      <path d={pathOf(HUMAN_ROUTE)} className="iso-wire iso-branch" strokeDasharray="2 4" />
+      <path d={pathOf(forkArrow(HUMAN_ROUTE))} className="iso-wire iso-branch" />
+    </g>
+  );
+}
+
 // Paint order is the only depth sort: back to front, smaller x + y first. The
 // fork pads join the stations here, so the APPROVE pad behind the line and the
 // ESCALATE pad in front of it are each painted in their right place.
@@ -370,7 +427,7 @@ const PAINT_ORDER = [
 ].sort((a, b) => a.position[0] + a.position[1] - (b.position[0] + b.position[1]));
 const OUTCOME = STATIONS.findIndex((station) => station.id === 'outcome');
 
-function IsoFloor({ active, frame, box }) {
+function IsoFloor({ active, frame, box, time }) {
   const current = STAGES[active];
   const lit = interpolate(frame, LIT_FRAMES, [0, 1], clamp);
   const progress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
@@ -399,11 +456,12 @@ function IsoFloor({ active, frame, box }) {
         ),
       )}
       <ApprovalFork hot={active === OUTCOME} />
+      {time !== undefined && <HumanRoute />}
       {active > 0 && <LitBelt from={STATIONS[active - 1]} to={STATIONS[active]} lit={lit} pulseOffset={pulseOffset} />}
       {/* The package rides at deck height in the front lane. Stations are no taller
           than their decks, and pods stand at the back of a deck, so nothing is ever
           in front of it: it is painted after every station. */}
-      <JobPackage position={packagePosition(active, progress)} />
+      {time === undefined ? <JobPackage position={packagePosition(active, progress)} /> : <Pipeline time={time} />}
       {STAGES.map((stage, i) => {
         const [lx, ly] = at(labelAnchor(i));
         return (
@@ -451,6 +509,9 @@ function StationHits({ active, box, onSelect }) {
           tabIndex={0}
           aria-label={`Etapa ${i + 1}: ${stage.title}`}
           aria-current={i === active ? 'step' : undefined}
+          // A pointer press never moves focus here, so a click draws no focus
+          // ring; Tab focus still shows the :focus-visible hairline.
+          onMouseDown={(event) => event.preventDefault()}
           onClick={() => onSelect(i)}
           onKeyDown={(event) => onKeyDown(event, i)}
         />
@@ -461,7 +522,7 @@ function StationHits({ active, box, onSelect }) {
 
 // --- Caption -------------------------------------------------------------------
 
-function Caption({ stage, index, frame, layout }) {
+function Caption({ stage, frame, layout }) {
   const { unit, captionTop, captionWidth } = layout;
   const enter = interpolate(frame, [0, 15], [0, 1], clamp);
   return (
@@ -481,12 +542,6 @@ function Caption({ stage, index, frame, layout }) {
         transform: `translateY(${(1 - enter) * -12}px)`,
       }}
     >
-      <div style={{ fontSize: 13 * unit, color: color.muted, textTransform: 'uppercase', letterSpacing: 2 }}>
-        Etapa {index + 1} de {STAGES.length}
-      </div>
-      <div style={{ fontSize: 26 * unit, fontWeight: 700, lineHeight: 1.2, color: color.cyan, margin: `${2 * unit}px 0 ${8 * unit}px` }}>
-        {stage.title}
-      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 * unit, marginBottom: 8 * unit }}>
         {stage.agents.length === 0 ? (
           <span style={{ fontSize: 16 * unit }}>Orquestador (sin agentes)</span>
@@ -520,17 +575,20 @@ function Caption({ stage, index, frame, layout }) {
 
 // `onSelect` is optional: when it is a function (the guided tour), every station
 // becomes a button that calls onSelect(stationIndex). Without it (quiz screens)
-// the output is the drawing and the caption only.
-export function FactoryLoop({ stageIndex, onSelect }) {
+// the output is the drawing and the caption only. `pipeline` (the guided tour)
+// replaces the single job package with the living pipeline, at the time this
+// step's frame falls on in the cycle.
+export function FactoryLoop({ stageIndex, onSelect, pipeline = false }) {
   const frame = useCurrentFrame();
-  const { width, height } = useVideoConfig();
+  const { width, height, fps } = useVideoConfig();
   const active = Math.min(Math.max(Number.isFinite(stageIndex) ? Math.trunc(stageIndex) : 0, 0), STAGES.length - 1);
   const layout = screenLayout(STAGES[active], width, height);
+  const time = pipeline === true ? active * TOUR_STEP_MS + (frame * 1000) / fps : undefined;
   return (
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
-      <IsoFloor active={active} frame={frame} box={layout.scene} />
+      <IsoFloor active={active} frame={frame} box={layout.scene} time={time} />
       {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} onSelect={onSelect} />}
-      <Caption stage={STAGES[active]} index={active} frame={frame} layout={layout} />
+      <Caption stage={STAGES[active]} frame={frame} layout={layout} />
     </AbsoluteFill>
   );
 }

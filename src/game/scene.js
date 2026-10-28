@@ -53,6 +53,9 @@ const BRANCH_REACH = 14;
 /** The APPROVE label floats this high above its pad's back edge; ESCALATE sits this far in front of its pad. */
 const APPROVE_LABEL_LIFT = 34;
 const ESCALATE_LABEL_GAP = 16;
+/** Human route: where it starts and ends, in from each pad's right (+x) edge, and how far past the pads it runs. */
+const HUMAN_INSET = 10;
+const HUMAN_OUT = 24;
 
 const MAX_SIDE = 1920;
 const FALLBACK_SIZE = Object.freeze({ width: 1280, height: 720 });
@@ -165,17 +168,42 @@ export const FORK = (() => {
   });
 })();
 
+/**
+ * The way a human-approved package travels from the ESCALATE pad to main: it
+ * starts over the ESCALATE pad, runs around the +x side of both pads, and ends
+ * over the APPROVE pad, at pad-top height. Every segment changes one coordinate,
+ * so each one draws as a straight iso hairline. Points are where a package's
+ * centre passes, like the branch wires.
+ */
+export const HUMAN_ROUTE = (() => {
+  const [approve, escalate] = FORK.branches.map((b) => b.pad);
+  const laneY = (pad) => pad.position[1] + pad.size[1] / 2;
+  const innerX = escalate.position[0] + escalate.size[0] - HUMAN_INSET;
+  const outerX = Math.max(approve.position[0] + approve.size[0], escalate.position[0] + escalate.size[0]) + HUMAN_OUT;
+  const z = escalate.size[2];
+  return deepFreeze([
+    [innerX, laneY(escalate), z],
+    [outerX, laneY(escalate), z],
+    [outerX, laneY(approve), z],
+    [approve.position[0] + approve.size[0] - HUMAN_INSET, laneY(approve), z],
+  ]);
+})();
+
 const padFootprints = FORK.branches.map(({ pad: { position, size } }) => [
   position[0],
   position[1],
   position[0] + size[0],
   position[1] + size[1],
 ]);
+// A package riding the human route reaches half its size past the route's points.
+const routeReach = PACKAGE_SIZE / 2;
 const last = STATIONS[STATIONS.length - 1];
-const plateX1 = Math.max(last.position[0] + last.size[0], ...padFootprints.map((f) => f[2])) + PLATE_MARGIN;
+const plateX1 =
+  Math.max(last.position[0] + last.size[0], ...padFootprints.map((f) => f[2]), ...HUMAN_ROUTE.map((p) => p[0] + routeReach)) +
+  PLATE_MARGIN;
 const plateY0 = Math.min(-REWORK_BACK, ...padFootprints.map((f) => f[1])) - PLATE_MARGIN;
 const plateY1 = Math.max(STATION_DEPTH, ...padFootprints.map((f) => f[3])) + PLATE_MARGIN;
-/** The ground plate under the whole floor (stations, rework loop, fork pads): [x, y, z] corner and [w, d, h] size. */
+/** The ground plate under the whole floor (stations, rework loop, fork pads, human route): [x, y, z] corner and [w, d, h] size. */
 export const PLATE = Object.freeze({
   position: Object.freeze([-PLATE_MARGIN, plateY0, -PLATE_THICKNESS]),
   size: Object.freeze([plateX1 + PLATE_MARGIN, plateY1 - plateY0, PLATE_THICKNESS]),
@@ -240,8 +268,8 @@ function forkLabelPoints({ label, labelAnchor: [x, y, z] }) {
 
 /**
  * The viewBox that frames the whole floor: every station box up to the tallest
- * deck part, the rework loop, the ground plate, the station labels, and the
- * approval fork (pads, branch wires, and labels).
+ * deck part, the rework loop, the ground plate, the station labels, the
+ * approval fork (pads, branch wires, and labels), and the human route.
  */
 export const FLOOR_VIEWBOX = Object.freeze(
   isoFrame([
@@ -255,6 +283,7 @@ export const FLOOR_VIEWBOX = Object.freeze(
       b.labelAnchor,
       ...forkLabelPoints(b),
     ]),
+    ...HUMAN_ROUTE,
   ]),
 );
 
