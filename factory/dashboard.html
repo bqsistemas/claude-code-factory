@@ -97,6 +97,25 @@
   .verdict.warn { background: var(--changes-bg); color: var(--changes); }
   .verdict.bad  { background: var(--alert-bg); color: var(--alert); }
   .missing-doc { color: var(--muted); font-style: italic; }
+
+  .agents { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
+  .agent { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
+           font-size: 10.5px; line-height: 16px; padding: 1px 7px 1px 1px; border-radius: 999px;
+           background: var(--chip-bg); color: var(--ink); border: 1px solid var(--line); }
+  .agent .avatar { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+                   background: var(--ink); color: var(--panel); animation: working 1.6s ease-in-out infinite; }
+  .agent .avatar svg { display: block; width: 10px; height: 10px; }
+  .agent:nth-child(2) .avatar { animation-delay: .2s; }
+  .agent:nth-child(3) .avatar { animation-delay: .4s; }
+  .agent:nth-child(4) .avatar { animation-delay: .6s; }
+  .agent-label { min-width: 0; overflow-wrap: anywhere; }
+  @keyframes working {
+    0%, 100% { transform: translateY(0); box-shadow: 0 0 0 0 var(--line); }
+    50% { transform: translateY(-1px); box-shadow: 0 0 0 3px var(--line); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .agent, .agent .avatar, .chip.pending { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -118,6 +137,16 @@
 </aside>
 
 <script>
+  // Module scripts cannot load over file://, so the board script below never runs there.
+  if (location.protocol === 'file:') {
+    const status = document.getElementById('status');
+    status.className = 'status off';
+    status.textContent = 'serve this folder: cd factory && python3 -m http.server 8000';
+  }
+</script>
+<script type="module">
+import { activeAgents, agentsHtml } from './activity.js';
+
 const DEMO = new URLSearchParams(location.search).has('demo');
 const BASE = DEMO ? 'demo/' : '';
 const STAGES = [
@@ -155,11 +184,13 @@ function chips(reviews) {
 
 function card(job) {
   const alert = job.stage === 'needs-human';
+  const running = activeAgents(job).length > 0;
   const rows = roundsOf(job).map((r, i) =>
     `<div class="round"><span class="n">R${i + 1}</span>${chips(r)}</div>`).join('');
-  return `<button class="card ${alert ? 'alert' : ''} ${job.stage === 'merged' ? 'merged' : ''}" data-id="${esc(job.id)}">
+  return `<button class="card ${alert ? 'alert' : ''} ${job.stage === 'merged' ? 'merged' : ''} ${running ? 'running' : ''}" data-id="${esc(job.id)}">
     <div class="id">${esc(job.id)}</div>
     <div class="title">${esc(job.title || job.id)}</div>
+    ${agentsHtml(job)}
     ${rows ? `<div class="rounds">${rows}</div>` : ''}
     ${job.note ? `<div class="note">${esc(job.note)}</div>` : ''}
     ${alert ? `<code class="cmd">/factory approve ${esc(job.id)}</code>` : ''}
