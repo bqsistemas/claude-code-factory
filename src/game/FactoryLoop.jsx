@@ -1,44 +1,41 @@
 // Remotion composition: the factory as an iso-glow production plant. A dark
-// isometric hairline drawing (SVG) of the v2 pipeline: the queue dock, intake's
-// sorting gate with its two bins, the route switch with four lens lamps, the line,
-// the gate checkpoint, the reviewers, the approver's fork and the four output
-// bays. Only what is live glows in the accent colour: the lit node and the tracks
-// of the current step. On the guided tour (`pipeline`) one scenario package rides
-// the step's tracks (see pipeline.js) and an HTML caption narrates the step; in
-// the quiz a single package moves from station to station.
+// isometric hairline drawing (SVG) of the v2 pipeline, laid out as four stacked
+// layers: Entrada (the queue dock, intake's sorting gate with its two bins, the
+// route switch), Producción (spec, build, the gate checkpoint), Control (the
+// reviewers and the approver's fork) and Salida (the four output bays). Belts snake
+// through the layers; every conditional branch is its own dashed wire. Only what is
+// live glows in the accent colour: the lit node and the tracks of the current step.
+// On the guided tour (`pipeline`) one scenario package rides the step's tracks (see
+// pipeline.js); in the quiz a single package moves from station to station. The
+// composition draws only the plant: the narration lives in the HTML text column.
 // Colors come from CSS classes and :root tokens in styles.css (never a style element:
-// the CSP blocks it). Caption styles are React style objects (applied through the
-// CSSOM, allowed by the CSP) and reuse the page's :root custom properties.
+// the CSP blocks it).
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 
 import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
-import { captionContent, captionText, chipText, floorView, screenLayout } from './layout.js';
-import { Octopus } from './Octopus.jsx';
+import { floorView, screenLayout } from './layout.js';
 import { BELT_PERIOD_MS, BELT_PITCH, WIRE_PERIOD_MS, packageAt, treadOffset } from './pipeline.js';
 import { SCENARIOS, TOUR_STEPS } from './scenarios.js';
 import { TOUR_STEP_MS } from './tour.js';
 import {
-  ACCEPT_LABEL,
   FLOOR,
   FLOOR_VIEWBOX,
+  LABELS,
+  LAYER_PLATES,
   NODES,
-  PLATE,
   STATIONS,
   TRACKS,
   iso,
-  labelAnchor,
-  nodeLabelAnchor,
+  labelBox,
+  labelPosition,
   packagePosition,
   stationOutline,
 } from './scene.js';
 
 const color = {
   bg: 'var(--color-bg, #0b0d17)',
-  panel: 'color-mix(in srgb, var(--color-panel, #151a2e) 90%, transparent)', // near-solid for text contrast
   text: 'var(--color-text, #e6edff)',
-  magenta: 'var(--color-magenta, #ff5ad9)',
-  green: 'var(--color-green, #39ff88)',
 };
 const font = 'var(--font-game, ui-monospace, Menlo, Consolas, monospace)';
 
@@ -120,16 +117,21 @@ function Filters() {
   );
 }
 
-function GroundPlate() {
-  const [x, y, z] = PLATE.position;
-  const [w, d, h] = PLATE.size;
+// One slab per layer, higher the further back it is, with an inset outline on top.
+// The layer that holds the lit node takes the accent.
+const SLAB = FLOOR.plateThickness;
+function GroundPlate({ litLayer }) {
   const inset = 8;
   return (
     <g>
-      <IsoBox position={PLATE.position} size={PLATE.size} />
-      <g transform={TOP(x, y, z + h)}>
-        <rect className="iso-detail" x={inset} y={inset} width={w - 2 * inset} height={d - 2 * inset} rx="6" />
-      </g>
+      {LAYER_PLATES.map(({ id, index, position: [x, y, z], size: [w, d] }) => (
+        <g key={id}>
+          <IsoBox position={[x, y, z - SLAB]} size={[w, d, SLAB]} />
+          <g transform={TOP(x, y, z)}>
+            <rect className={cx('iso-layer', index === litLayer && 'iso-hot')} x={inset} y={inset} width={w - 2 * inset} height={d - 2 * inset} rx="6" />
+          </g>
+        </g>
+      ))}
     </g>
   );
 }
@@ -168,38 +170,73 @@ const junction = (from, to) => centre(trackNamed(from, to).points[1]);
 const GATE_AT = junction('intake', 'bin-reject');
 const FORK_AT = junction('approve', 'bay-needs-human');
 const LENSES = ['security', 'ux', 'ui', 'code'];
-// Loop labels float over the loops' front runs.
-const LOOP_LABELS = [
-  { text: 'GATE: FAIL', from: 'gate' },
-  { text: 'CHANGES', from: 'review' },
-].map(({ text, from }) => {
-  const [, a, b] = trackNamed(from, 'build').points;
-  return { text, anchor: [(a[0] + b[0]) / 2, a[1], FLOOR.packageOffset[2] + 6] };
-});
+// The layer each node stands on: a station's own, the bins on the first, the bays on the last.
+const LAYER_OF = new Map(Object.values(NODES).map(({ id, kind }) => [id, kind === 'station' ? STATIONS[STATION_ID.get(id)].layer : kind === 'bin' ? 0 : LAYER_PLATES.length - 1]));
+// The belts: flat strips at deck height along every belt track (the turns between
+// layers included), with an edge strip on the visible side and roller hairlines
+// across. Each strip is cut where it meets a station, so it only shows between them.
+// On the tour (`time`) the rollers run the way the line runs; without it they stand still.
+const LIFT = 6;
+const STRIP_HALF = (FLOOR.lane[1] - FLOOR.lane[0]) / 2;
+const NODE_BOXES = Object.values(NODES).map(({ position, size }) => ({ position, size }));
+const BELTS = TRACKS.filter((t) => t.kind === 'belt').flatMap((t) =>
+  t.points.slice(1).flatMap((to, k) => {
+    const from = t.points[k];
+    // A lift between two layers: a slim pillar.
+    if (from[0] === to[0] && from[1] === to[1]) {
+      return [{ key: `${trackKey(t)}:${k}:lift`, lift: [from[0] + HALF - LIFT / 2, from[1] + HALF - LIFT / 2, Math.min(from[2], to[2]), Math.abs(to[2] - from[2])] }];
+    }
+    const axis = from[0] === to[0] ? 1 : 0;
+    const cross = 1 - axis;
+    const dir = Math.sign(to[axis] - from[axis]);
+    const z = from[2];
+    const across = [from[cross] + HALF - STRIP_HALF, from[cross] + HALF + STRIP_HALF];
+    let pieces = [[Math.min(from[axis], to[axis]) + HALF, Math.max(from[axis], to[axis]) + HALF]];
+    for (const { position, size } of NODE_BOXES) {
+      if (position[cross] >= across[1] || position[cross] + size[cross] <= across[0]) continue;
+      const cut = [position[axis], position[axis] + size[axis]];
+      pieces = pieces.flatMap(([a, b]) => (cut[1] <= a || cut[0] >= b ? [[a, b]] : [[a, Math.min(b, cut[0])], [Math.max(a, cut[1]), b]].filter(([p, q]) => q - p > 0.5)));
+    }
+    const len = Math.abs(to[axis] - from[axis]);
+    return pieces.map(([a, b]) => ({ key: `${trackKey(t)}:${k}:${a}`, axis, dir, z, a, b, across, origin: from[axis] + HALF, len }));
+  }),
+);
 
-// The belt from a station to the next one: a flat strip at deck height, with an
-// edge strip on its front and roller hairlines across it. On the tour (`time`)
-// the rollers run toward the next station; without it they stand still.
-function Belt({ from, to, time }) {
-  const x = from.position[0] + from.size[0];
-  const length = to.position[0] - x;
-  const [y0, y1] = FLOOR.lane;
-  const z = from.size[2];
+function Belts({ time }) {
   const shift = treadOffset(time, BELT_PITCH, BELT_PERIOD_MS);
-  // Rollers keep one pitch clear of either end of the belt.
-  const rollers = [];
-  for (let rx = shift; rx <= length - BELT_PITCH; rx += BELT_PITCH) {
-    if (rx >= BELT_PITCH) rollers.push(num(rx));
-  }
   return (
     <g>
-      <rect transform={FRONT(x, y1, z)} width={length} height={4} className="iso-face" />
-      <rect transform={TOP(x, y0, z)} width={length} height={y1 - y0} className="iso-face iso-face--top" />
-      <g transform={TOP(x, y0, z)}>
-        {rollers.map((rx, k) => (
-          <line key={k} className="iso-detail" x1={rx} y1={3} x2={rx} y2={y1 - y0 - 3} />
-        ))}
-      </g>
+      {BELTS.map(({ key, lift, axis, dir, z, a, b, across, origin, len }) => {
+        if (lift) return <IsoBox key={key} position={[lift[0], lift[1], lift[2]]} size={[LIFT, LIFT, lift[3]]} />;
+        const length = b - a;
+        const width = across[1] - across[0];
+        // Rollers sit at fixed distances from the segment start, so they advance along it.
+        const rollers = [];
+        for (let r = shift; r < len; r += BELT_PITCH) {
+          const where = origin + dir * r;
+          if (where >= a + 3 && where <= b - 3) rollers.push(num(where - a));
+        }
+        const top = axis === 0 ? TOP(a, across[0], z) : TOP(across[0], a, z);
+        const edge = axis === 0 ? FRONT(a, across[1], z) : SIDE(across[1], b, z);
+        return (
+          <g key={key}>
+            <rect transform={edge} width={length} height={4} className="iso-face" />
+            <rect transform={top} width={axis === 0 ? length : width} height={axis === 0 ? width : length} className="iso-face iso-face--top" />
+            <g transform={top}>
+              {rollers.map((r, i) => (
+                <line
+                  key={i}
+                  className="iso-detail"
+                  x1={axis === 0 ? r : 3}
+                  y1={axis === 0 ? 3 : r}
+                  x2={axis === 0 ? r : width - 3}
+                  y2={axis === 0 ? width - 3 : r}
+                />
+              ))}
+            </g>
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -327,8 +364,9 @@ function Checkpoint({ station }) {
 // the set of agent names whose pods glow; null lights them all.
 function Station({ station, stage, lit, litPods, routed }) {
   const { position, size } = station;
-  const [x, y] = position;
-  const [w, d, h] = size;
+  const [x, y, z] = position;
+  const [w, d, height] = size;
+  const h = z + height;
   const halo = 14;
   return (
     <g>
@@ -376,8 +414,9 @@ function Station({ station, stage, lit, litPods, routed }) {
 // A bin at intake's sorting gate or an output bay: a low box that lights up when
 // the package ends there.
 function LowNode({ node, lit }) {
-  const [x, y] = node.position;
-  const [w, d, h] = node.size;
+  const [x, y, z] = node.position;
+  const [w, d, height] = node.size;
+  const h = z + height;
   const halo = 12;
   return (
     <g>
@@ -399,13 +438,7 @@ function LowNode({ node, lit }) {
 // The belt into the current station as a lit wire along the package's lane, with
 // a light pulse running ahead of the package (quiz only).
 function LitBelt({ from, to, lit, pulseOffset }) {
-  const [ox, oy, oz] = FLOOR.packageOffset;
-  const lane = oy + FLOOR.packageSize / 2;
-  const mid = FLOOR.packageSize / 2;
-  const d = pathOf([
-    [from.position[0] + ox + mid, lane, oz],
-    [to.position[0] + ox + mid, lane, oz],
-  ]);
+  const d = pathOf(trackNamed(from, to).points.map(centre));
   return (
     <g>
       <g opacity={lit} filter="url(#iso-soft)">
@@ -439,25 +472,22 @@ const PAINT_ORDER = Object.values(NODES)
   .map((node) => ({ node, order: node.position[0] + node.position[1] }))
   .sort((a, b) => a.order - b.order);
 
-function Labels({ litId }) {
-  const text = (key, point, label, extra) => {
-    const [lx, ly] = at(point);
-    return (
-      <text key={key} x={lx} y={ly} textAnchor={extra.anchor} className={cx('iso-label', extra.hot && 'iso-hot')}>
-        {label}
-      </text>
-    );
-  };
+// Flat text at fixed screen positions (see LABELS in scene.js); the one of the lit node is lit.
+function Labels({ litId, view }) {
   return (
     <g>
-      {STAGES.map((stage, i) =>
-        text(stage.id, labelAnchor(i), `${i + 1} · ${stage.title}`, { anchor: 'end', hot: stage.id === litId }),
-      )}
-      {Object.values(NODES)
-        .filter(({ kind }) => kind !== 'station')
-        .map(({ id, label }) => text(id, nodeLabelAnchor(id), label, { anchor: 'middle', hot: id === litId }))}
-      {text('accept', ACCEPT_LABEL.anchor, ACCEPT_LABEL.text, { anchor: 'middle' })}
-      {LOOP_LABELS.map(({ text: label, anchor }) => text(label, anchor, label, { anchor: 'middle' }))}
+      {LABELS.map((item) => {
+        // Where the camera window is narrower than the plant (phones), a label the window
+        // would cut in half is left out.
+        const box = labelBox(item);
+        if (box.x0 < view.x || box.x1 > view.x + view.width || box.y0 < view.y || box.y1 > view.y + view.height) return null;
+        const [lx, ly] = labelPosition(item);
+        return (
+          <text key={item.id} x={num(lx)} y={num(ly)} textAnchor={item.anchor} className={cx('iso-label', item.layer && 'iso-label--layer', item.hot && item.hot === litId && 'iso-hot')}>
+            {item.text}
+          </text>
+        );
+      })}
     </g>
   );
 }
@@ -489,7 +519,8 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
       style={{ position: 'absolute', ...box }}
     >
       <Filters />
-      <GroundPlate />
+      <GroundPlate litLayer={LAYER_OF.get(litId)} />
+      <Belts time={time} />
       {PAINT_ORDER.map(({ node }) => {
         const i = STATION_ID.get(node.id);
         if (i === undefined) return <LowNode key={node.id} node={node} lit={node.id === litId ? lit : 0} />;
@@ -502,7 +533,6 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
               litPods={litPods}
               routed={routed}
             />
-            {i + 1 < STATIONS.length && <Belt from={STATIONS[i]} to={STATIONS[i + 1]} time={time} />}
           </g>
         );
       })}
@@ -510,12 +540,12 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
       {tour ? (
         <LitTracks keys={litKeys} lit={lit} />
       ) : (
-        active > 0 && <LitBelt from={STATIONS[active - 1]} to={STATIONS[active]} lit={lit} pulseOffset={pulseOffset} />
+        active > 0 && <LitBelt from={STATIONS[active - 1].id} to={STATIONS[active].id} lit={lit} pulseOffset={pulseOffset} />
       )}
       {/* The package rides at deck height; nothing stands in front of it on a deck, and
           bins and bays are lower than the deck, so it is painted after every node. */}
       <Package position={pkg} />
-      <Labels litId={litId} />
+      <Labels litId={litId} view={view} />
     </svg>
   );
 }
@@ -565,81 +595,13 @@ function StationHits({ active, box, view, onSelect }) {
   );
 }
 
-// --- Caption -------------------------------------------------------------------
-
-const chipStyle = (unit, accent) => ({
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6 * unit,
-  fontSize: chipText(unit),
-  padding: `${2 * unit}px ${10 * unit}px ${2 * unit}px ${4 * unit}px`,
-  border: `2px solid ${accent}`,
-  borderRadius: 4,
-  color: accent,
-});
-
-// One chip per agent: an octopus, its name and the model. Quiz chips show the routing
-// text when the agent is routed. Tour chips show the model the job's route picked.
-// The orchestrator, the scripts and the person get a plain chip.
-function Chip({ name, model, unit, offset }) {
-  const agent = Object.hasOwn(AVATARS, name);
-  return (
-    <span style={agent ? chipStyle(unit, color.green) : chipStyle(unit, color.text)}>
-      {agent && <Octopus name={name} size={30 * unit} offset={offset} />}
-      {model ? `${name} · ${model}` : name}
-    </span>
-  );
-}
-
-// `stage` is a STAGES entry (quiz); `step` is a TOUR_STEPS entry (tour): its
-// narration, its actors, the file it writes and the condition that picked the branch.
-function Caption({ stage, step, frame, layout }) {
-  const { unit, captionTop, captionWidth } = layout;
-  const enter = interpolate(frame, [0, 15], [0, 1], clamp);
-  const { text, chips, file, condition } = captionContent(step ?? stage);
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: captionTop,
-        left: 16,
-        maxWidth: captionWidth,
-        padding: `${12 * unit}px ${16 * unit}px`,
-        background: color.panel,
-        border: `2px solid ${color.magenta}`,
-        borderRadius: 4,
-        color: color.text,
-        fontFamily: font,
-        opacity: enter,
-        transform: `translateY(${(1 - enter) * -12}px)`,
-      }}
-    >
-      {text && <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginBottom: 8 * unit }}>{text}</div>}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 * unit, marginBottom: 8 * unit }}>
-        {chips.length === 0 ? (
-          <span style={{ fontSize: 16 * unit }}>Sin agentes: lo hace el orquestador o un script</span>
-        ) : (
-          chips.map((chip, i) => <Chip key={chip.name} {...chip} unit={unit} offset={i} />)
-        )}
-      </div>
-      <div style={{ fontSize: captionText(unit), lineHeight: 1.35 }}>
-        Escribe: <span style={{ color: color.magenta }}>{file}</span>
-      </div>
-      {condition && (
-        <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginTop: 4 * unit }}>
-          Condición: <span style={{ color: color.green }}>{condition}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // `onSelect` is optional: when it is a function (the guided tour), every station
 // becomes a button that calls onSelect(stationIndex). Without it (quiz screens)
-// the output is the drawing and the caption only. `pipeline` (the guided tour)
-// makes `stepIndex` pick the TOUR_STEPS entry the floor and the caption show;
-// otherwise `stageIndex` picks the stage.
-export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false }) {
+// the output is the drawing only. `pipeline` (the guided tour) makes `stepIndex`
+// pick the TOUR_STEPS entry the floor shows; otherwise `stageIndex` picks the stage.
+// `split` is true on wide screens, where the Player fills the right column and the
+// whole composition is the floor box; below 64rem the floor box leaves room for the dock.
+export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false, split = false }) {
   const frame = useCurrentFrame();
   const { width, height, fps } = useVideoConfig();
   const clampTo = (v, length) => Math.min(Math.max(Number.isFinite(v) ? Math.trunc(v) : 0, 0), length - 1);
@@ -648,7 +610,7 @@ export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false 
   const step = tour ? TOUR_STEPS[stepAt] : undefined;
   // On the tour the active station is where the step ends (-1 for a bin or a bay: none).
   const active = tour ? STATION_ID.get(step.path[step.path.length - 1]) ?? -1 : clampTo(stageIndex, STAGES.length);
-  const layout = screenLayout(step ?? STAGES[active], width, height);
+  const layout = screenLayout(width, height, split);
   const stepMs = (frame * 1000) / fps;
   const progress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
   const pkg = tour
@@ -660,7 +622,6 @@ export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false 
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
       <IsoFloor active={active} frame={frame} box={layout.scene} time={time} step={step} view={view} pkg={pkg} />
       {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} view={view} onSelect={onSelect} />}
-      {!layout.captionInDock && <Caption stage={STAGES[Math.max(active, 0)]} step={step} frame={frame} layout={layout} />}
     </AbsoluteFill>
   );
 }

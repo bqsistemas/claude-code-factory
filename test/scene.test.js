@@ -5,7 +5,7 @@ import { STAGES } from '../src/game/engine.js';
 import { readFile } from 'node:fs/promises';
 
 import * as scene from '../src/game/scene.js';
-import { FLOOR_VIEWBOX, PLATE, STATIONS, compositionSize, iso, isoFrame, packagePosition, stationOutline } from '../src/game/scene.js';
+import { FLOOR_VIEWBOX, LABELS, LAYER_PLATES, STATIONS, compositionSize, iso, isoFrame, labelBox, packagePosition, stationOutline } from '../src/game/scene.js';
 
 const isFiniteTriple = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -22,19 +22,26 @@ test('AC-2: STATIONS has one station per stage, in order, at distinct finite pos
   assert.equal(new Set(keys).size, keys.length, 'positions are pairwise distinct');
 });
 
-test('AC-4: packagePosition interpolates from the previous station to the current one', () => {
-  const close = (actual, expected, label) => {
-    assert.equal(actual.length, 3, label);
-    actual.forEach((v, k) => assert.ok(Math.abs(v - expected[k]) < 1e-9, `${label}[${k}]: ${v} vs ${expected[k]}`));
-  };
+test('AC-4: packagePosition rides the belt from the previous station to the current one', () => {
+  const offset = scene.FLOOR.packageOffset;
+  const belt = (i) => scene.TRACKS.find((t) => t.kind === 'belt' && t.from === STATIONS[i - 1].id && t.to === STATIONS[i].id);
   for (let i = 1; i < STATIONS.length; i += 1) {
-    const from = STATIONS[i - 1].position;
-    const to = STATIONS[i].position;
-    assert.deepEqual(packagePosition(i, 0), from, `stage ${i} p=0`);
-    assert.deepEqual(packagePosition(i, 1), to, `stage ${i} p=1`);
-    close(packagePosition(i, 0.5), from.map((v, k) => (v + to[k]) / 2), `stage ${i} p=0.5`);
+    assert.deepEqual(packagePosition(i, 0), STATIONS[i - 1].position, `stage ${i} p=0`);
+    assert.deepEqual(packagePosition(i, 1), STATIONS[i].position, `stage ${i} p=1`);
     assert.deepEqual(packagePosition(i, -1), packagePosition(i, 0), `stage ${i} p=-1`);
     assert.deepEqual(packagePosition(i, 2), packagePosition(i, 1), `stage ${i} p=2`);
+    // Every position along the way stands on the belt's polyline (the turns between layers included).
+    const { points } = belt(i);
+    for (const p of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      const at = packagePosition(i, p).map((v, k) => v + offset[k]);
+      const onSegment = points.slice(1).some((q, k) => {
+        const from = points[k];
+        const total = Math.hypot(...q.map((v, c) => v - from[c]));
+        const d = Math.hypot(...at.map((v, c) => v - from[c])) + Math.hypot(...at.map((v, c) => v - q[c]));
+        return Math.abs(d - total) < 1e-6;
+      });
+      assert.ok(onSegment, `stage ${i} p=${p} is on the belt`);
+    }
   }
   for (const p of [0, 0.25, 0.5, 1, -1, 2, NaN]) {
     assert.deepEqual(packagePosition(0, p), STATIONS[0].position, `stage 0 p=${p}`);
@@ -90,14 +97,14 @@ describe('job 007: iso-glow factory floor', () => {
     assert.ok(source.includes('MIT'), 'scene.js names the MIT license');
   });
 
-  test('AC-3: STATIONS are iso boxes, one per stage, non-overlapping, reading left to right', () => {
+  test('AC-3: STATIONS are iso boxes, one per stage, non-overlapping, stacked in layers', () => {
     assert.deepEqual(
       STATIONS.map((s) => s.id),
       STAGES.map((s) => s.id),
     );
     for (const { id, position, size } of STATIONS) {
       assert.ok(isFiniteTriple(position), `${id} position is 3 finite numbers`);
-      assert.equal(position[2], 0, `${id} stands on the floor`);
+      assert.equal(position[2], LAYER_PLATES[STATIONS.find((st) => st.id === id).layer].position[2], `${id} stands on its layer`);
       assert.ok(isFiniteTriple(size) && size.every((v) => v > 0), `${id} size is 3 finite positive numbers`);
     }
     const disjoint = (a0, a1, b0, b1) => a1 <= b0 || b1 <= a0;
@@ -109,12 +116,9 @@ describe('job 007: iso-glow factory floor', () => {
         assert.ok(xs || ys, `${a.id} and ${b.id} footprints do not overlap`);
       }
     }
-    for (let i = 1; i < STATIONS.length; i += 1) {
-      assert.ok(
-        iso(STATIONS[i].position)[0] > iso(STATIONS[i - 1].position)[0],
-        `${STATIONS[i].id} is right of ${STATIONS[i - 1].id} on screen`,
-      );
-    }
+    const layers = STATIONS.map((st) => st.layer);
+    assert.deepEqual(layers, [...layers].sort(), 'stations are listed layer by layer');
+    assert.deepEqual([...new Set(layers)], [0, 1, 2, 3], 'the stations fill the four layers in order');
   });
 
   test('AC-4: isoFrame pads the tightest projected box, and FLOOR_VIEWBOX holds every station corner', () => {
@@ -164,7 +168,7 @@ describe('job 008: guided loop tour', () => {
 
   test('AC-3: stationOutline is the 6-point iso silhouette of each station, inside FLOOR_VIEWBOX', () => {
     const { x: vx, y: vy, width: vw, height: vh } = FLOOR_VIEWBOX;
-    STATIONS.forEach(({ id, position: [x, y], size: [w, d, h] }, i) => {
+    STATIONS.forEach(({ id, position: [x, y, z], size: [w, d, h] }, i) => {
       const outline = stationOutline(i);
       assert.equal(outline.length, 6, `${id} has 6 points`);
       for (const p of outline) {
@@ -173,8 +177,8 @@ describe('job 008: guided loop tour', () => {
 
       // Recover H from the first point: iso(x, y, H)[1] = (x + y) / 2 - H.
       const H = (x + y) * Math.sin(Math.PI / 6) - outline[0][1];
-      assert.ok(H >= h - EPS, `${id} H ${H} is at least the box height ${h}`);
-      const corners = [[x, y, H], [x + w, y, H], [x + w, y, 0], [x + w, y + d, 0], [x, y + d, 0], [x, y + d, H]];
+      assert.ok(H >= z + h - EPS, `${id} H ${H} is at least the box height ${h}`);
+      const corners = [[x, y, H], [x + w, y, H], [x + w, y, z], [x + w, y + d, z], [x, y + d, z], [x, y + d, H]];
       corners.forEach((corner, k) => {
         const expected = iso(corner);
         assert.ok(Math.abs(outline[k][0] - expected[0]) <= EPS, `${id} point ${k} x`);
@@ -184,7 +188,7 @@ describe('job 008: guided loop tour', () => {
       for (const [sx, sy] of outline) {
         assert.ok(sx >= vx && sx <= vx + vw && sy >= vy && sy <= vy + vh, `${id} point ${sx},${sy} inside FLOOR_VIEWBOX`);
       }
-      assert.ok(inside(iso([x + w / 2, y + d / 2, h]), outline), `${id} top-face center is inside its outline`);
+      assert.ok(inside(iso([x + w / 2, y + d / 2, z + h]), outline), `${id} top-face center is inside its outline`);
     });
 
     for (const bad of [-1, STATIONS.length, 0.5]) {
@@ -215,7 +219,6 @@ describe('job 016: the plant', () => {
       assert.ok(node.label.trim() && isFiniteTriple(node.position) && isFiniteTriple(node.size) && isFiniteTriple(node.point), `${id} shape`);
     }
     assert.deepEqual(STATIONS.map((s) => s.id), STAGES.map((s) => s.id));
-    for (let i = 1; i < STATIONS.length; i += 1) assert.ok(STATIONS[i].position[0] > STATIONS[i - 1].position[0], 'strictly increasing x');
   });
 
   test('AC-2: TRACKS has every listed track and straight segments between node points', () => {
@@ -239,17 +242,71 @@ describe('job 016: the plant', () => {
     }
   });
 
-  test('AC-2: everything lies on the PLATE and inside FLOOR_VIEWBOX', () => {
-    const plate = footprint(PLATE);
+  test('AC-2: every node stands on its layer slab and everything is inside FLOOR_VIEWBOX', () => {
+    const layerOf = (id, node) => (node.kind === 'station' ? STATIONS.find((st) => st.id === id).layer : node.kind === 'bin' ? 0 : 3);
     for (const [id, node] of Object.entries(NODES)) {
+      const slab = LAYER_PLATES[layerOf(id, node)];
+      assert.equal(node.position[2], slab.position[2], `${id} stands at its slab's height`);
       for (const c of corners(node.position, node.size)) {
-        assert.ok(onPlate(c, plate), `${id} corner ${c} on the plate`);
+        assert.ok(onPlate(c, { x0: slab.position[0], x1: slab.position[0] + slab.size[0], y0: slab.position[1], y1: slab.position[1] + slab.size[1] }), `${id} corner ${c} on its slab`);
         assert.ok(insideView(c), `${id} corner ${c} inside the view`);
       }
-      assert.ok(onPlate(node.point, plate) && insideView(node.point), `${id} point`);
+      assert.ok(insideView(node.point), `${id} point`);
     }
     for (const { from, to, points } of TRACKS) {
-      for (const p of points) assert.ok(onPlate(p, plate) && insideView(p), `${from}>${to} point ${p}`);
+      for (const p of points) assert.ok(insideView(p), `${from}>${to} point ${p}`);
     }
   });
+
+  test('job 019: the layers are terraces, higher the further back, and do not overlap', () => {
+    assert.equal(LAYER_PLATES.length, 4);
+    LAYER_PLATES.forEach((slab, k) => {
+      if (k > 0) {
+        assert.ok(slab.position[2] < LAYER_PLATES[k - 1].position[2], `layer ${k} is lower than layer ${k - 1}`);
+        assert.ok(slab.position[1] > LAYER_PLATES[k - 1].position[1], `layer ${k} is in front of layer ${k - 1}`);
+      }
+    });
+    assert.deepEqual(LAYER_PLATES.map((l) => l.id), ['entrada', 'produccion', 'control', 'salida']);
+  });
+
+  test('job 019: every floor label sits apart from the others and from every box', () => {
+    const near = (a, b, pad) => a.x0 - pad < b.x1 && b.x0 - pad < a.x1 && a.y0 - pad < b.y1 && b.y0 - pad < a.y1;
+    const boxes = LABELS.map((l) => ({ id: l.id, ...labelBox(l) }));
+    const ids = LABELS.map((l) => l.id);
+    assert.equal(new Set(ids).size, ids.length, 'label ids are unique');
+    for (const need of ['gate', 'bay-merged', 'bay-awaiting-merge', 'bay-needs-human', 'bay-rejected', 'bin-needs-info', 'bin-reject', 'accept', 'apv', 'esc', 'gatefail', 'changes']) {
+      assert.ok(ids.includes(need), `label ${need} exists`);
+    }
+    assert.ok(LABELS.some((l) => l.text === 'GATE: FAIL') && LABELS.some((l) => l.text === 'CHANGES'), 'the loops are named');
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) assert.ok(!near(boxes[i], boxes[j], 2), `${boxes[i].id} and ${boxes[j].id} do not overlap`);
+    }
+    // No label covers a station (up to its tallest part), a bin or a bay.
+    const silhouette = (node) => {
+      const [x, y, z] = node.position;
+      const [w, d, h] = node.size;
+      const top = z + (node.kind === 'station' ? h + Math.max(scene.FLOOR.podSize[2], scene.FLOOR.packageSize) : h);
+      return [[x, y, top], [x + w, y, top], [x + w, y, z], [x + w, y + d, z], [x, y + d, z], [x, y + d, top]].map(iso);
+    };
+    const inside = ([px, py], polygon) => {
+      let hit = false;
+      for (let a = 0, b = polygon.length - 1; a < polygon.length; b = a, a += 1) {
+        const [ax, ay] = polygon[a];
+        const [bx, by] = polygon[b];
+        if (ay > py !== by > py && px < ((bx - ax) * (py - ay)) / (by - ay) + ax) hit = !hit;
+      }
+      return hit;
+    };
+    const { x, y, width, height } = FLOOR_VIEWBOX;
+    for (const box of boxes) {
+      for (const node of Object.values(NODES)) {
+        const polygon = silhouette(node);
+        for (let px = box.x0; px <= box.x1; px += 2) {
+          for (let py = box.y0; py <= box.y1; py += 2) assert.ok(!inside([px, py], polygon), `label ${box.id} covers ${node.id}`);
+        }
+      }
+      assert.ok(box.x0 >= x && box.x1 <= x + width && box.y0 >= y && box.y1 <= y + height, `label ${box.id} is inside the view`);
+    }
+  });
+
 });

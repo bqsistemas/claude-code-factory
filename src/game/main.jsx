@@ -1,14 +1,13 @@
 // Browser entry for /game: mounts the quiz UI and the Remotion Player into #game.
 // Bundled to public/game.js with `npm run build:game`.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Player } from '@remotion/player';
 
 import { AVATARS } from '../../factory/avatars.js';
 import { FactoryLoop } from './FactoryLoop.jsx';
-import { Octopus } from './Octopus.jsx';
 import { StaticOctopus } from './StaticOctopus.js';
-import { captionContent } from './layout.js';
+import { HUD_HEIGHT, WIDE, captionContent, splitColumns } from './layout.js';
 import { compositionSize } from './scene.js';
 import {
   POINTS_PER_CORRECT,
@@ -69,30 +68,52 @@ function useFocusOnMount() {
   return ref;
 }
 
-// Composition size that matches the viewport's aspect ratio, so the Player fills
-// the fixed scene layer without letterboxing. Updated when the window resizes.
-function useCompositionSize() {
-  const [size, setSize] = useState(() => compositionSize(window.innerWidth, window.innerHeight));
-  useEffect(() => {
-    const onResize = () => {
-      const next = compositionSize(window.innerWidth, window.innerHeight);
-      setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+// The Player's composition size and layout mode. On wide screens (64rem and up) the
+// scene is the right column, so the composition is that column's real size, measured
+// with a ResizeObserver, and the plant is centred in it. Below 64rem the scene is the
+// fixed full-viewport layer and the composition is the viewport. Either way the
+// composition keeps the element's aspect ratio, so the Player never letterboxes.
+function useScene() {
+  const ref = useRef(null);
+  const [scene, setScene] = useState(() => {
+    const split = window.innerWidth >= WIDE;
+    return {
+      split,
+      ...(split
+        ? compositionSize(splitColumns(window.innerWidth).scene, window.innerHeight - HUD_HEIGHT)
+        : compositionSize(window.innerWidth, window.innerHeight)),
     };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+  });
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    const measure = () => {
+      const split = window.innerWidth >= WIDE;
+      const box = element.getBoundingClientRect();
+      const next = { split, ...compositionSize(box.width, box.height) };
+      setScene((prev) => (prev.split === next.split && prev.width === next.width && prev.height === next.height ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
   }, []);
-  return size;
+  return { ref, ...scene };
 }
 
 function StagePlayer({ stageIndex }) {
   const reduced = prefersReducedMotion();
-  const { width, height } = useCompositionSize();
+  const { ref, width, height, split } = useScene();
   return (
-    <div className="game__scene">
+    <div className="game__scene" ref={ref}>
       <Player
         key={stageIndex}
         component={FactoryLoop}
-        inputProps={{ stageIndex }}
+        inputProps={{ stageIndex, split }}
         durationInFrames={DURATION}
         fps={30}
         compositionWidth={width}
@@ -112,6 +133,27 @@ function StagePlayer({ stageIndex }) {
         style={{ width: '100%', height: '100%' }}
       />
     </div>
+  );
+}
+
+// Hairline icons for the tour controls (24x24, stroked with currentColor).
+const ICONS = {
+  pause: <path d="M8 5v14M16 5v14" />,
+  play: <path d="M8 5l11 7-11 7z" />,
+  sound: <path d="M4 9v6h4l5 4V5L8 9zM16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11" />,
+  muted: <path d="M4 9v6h4l5 4V5L8 9zM17 9.5l4 5M21 9.5l-4 5" />,
+  exit: <path d="M6 6l12 12M18 6L6 18" />,
+};
+
+// A small square icon button. The accessible name flips with the state ("Pausar" /
+// "Reanudar"), so there is no aria-pressed; `active` only styles the state.
+function IconButton({ label, icon, onClick, active = false }) {
+  return (
+    <button type="button" className={active ? 'game__icon-button game__icon-button--on' : 'game__icon-button'} aria-label={label} title={label} onClick={onClick}>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        {icon}
+      </svg>
+    </button>
   );
 }
 
@@ -136,8 +178,9 @@ function Intro({ onStart, onTour }) {
   );
 }
 
-// The floor caption's content in the dock card, for phones where the floor box has
-// no room for it. Hidden at 64rem and wider (styles.css), where the floor draws it.
+// The caption's content in the text card: the narration, the agents with their model,
+// the file the step writes and the condition that picked the branch. It is HTML, drawn
+// once, so it is the same in the left column (64rem and wider) and in the phone dock.
 function DockCaption({ item }) {
   const { text, chips, file, condition } = captionContent(item);
   return (
@@ -258,7 +301,7 @@ function TourScreen({ onExit, audio }) {
   // The step on screen and when it started playing, for unmuting mid-step.
   const stepRef = useRef({ index: 0, playing: false, startedAt: 0 });
   const reduced = prefersReducedMotion();
-  const { width, height } = useCompositionSize();
+  const { ref: sceneRef, width, height, split } = useScene();
   const step = TOUR_STEPS[tour.index];
   const scenario = SCENARIOS[step.scenarioIndex];
 
@@ -343,11 +386,11 @@ function TourScreen({ onExit, audio }) {
 
   return (
     <section className="game__panel" aria-labelledby="tour-title">
-      <div className="game__scene">
+      <div className="game__scene" ref={sceneRef}>
         <Player
           ref={playerRef}
           component={FactoryLoop}
-          inputProps={{ stepIndex: tour.index, onSelect, pipeline: true }}
+          inputProps={{ stepIndex: tour.index, onSelect, pipeline: true, split }}
           durationInFrames={TOUR_PLAYER_FRAMES}
           loop
           fps={30}
@@ -372,17 +415,21 @@ function TourScreen({ onExit, audio }) {
           <p className="game__text">{scenario.summary}</p>
           <DockCaption item={step} />
         </div>
-        <p>
-          <button type="button" className="game__button" onClick={() => setTour((t) => togglePlaying(t))}>
-            {tour.playing ? 'Pausar' : 'Reanudar'}
-          </button>{' '}
-          <button type="button" className="game__button" onClick={onToggleSound}>
-            {soundOn ? 'Silenciar' : 'Activar sonido'}
-          </button>{' '}
-          <button type="button" className="game__button" onClick={onExit}>
-            Salir del loop
-          </button>
-        </p>
+        <div className="game__controls">
+          <IconButton
+            label={tour.playing ? 'Pausar' : 'Reanudar'}
+            active={!tour.playing}
+            onClick={() => setTour((t) => togglePlaying(t))}
+            icon={tour.playing ? ICONS.pause : ICONS.play}
+          />
+          <IconButton
+            label={soundOn ? 'Silenciar' : 'Activar sonido'}
+            active={!soundOn}
+            onClick={onToggleSound}
+            icon={soundOn ? ICONS.sound : ICONS.muted}
+          />
+          <IconButton label="Salir del loop" onClick={onExit} icon={ICONS.exit} />
+        </div>
       </div>
     </section>
   );

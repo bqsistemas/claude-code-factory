@@ -237,9 +237,10 @@ describe('job 004: one-page game with animated octopus agent characters', () => 
     assert.match(octopus, /from\s+'\.\.\/\.\.\/factory\/avatars\.js'/, 'imports ../../factory/avatars.js');
     assert.match(octopus, /import\s*\{[^}]*\buseCurrentFrame\b[^}]*\}\s*from\s*'remotion'/, 'imports useCurrentFrame from remotion');
 
-    const loop = await read('../src/game/FactoryLoop.jsx');
-    assert.match(loop, /import\s*\{[^}]*\bOctopus\b[^}]*\}\s*from\s*['"]\.\/Octopus\.jsx['"]/, 'FactoryLoop imports Octopus');
-    assert.match(loop, /<Octopus\b/, 'FactoryLoop renders <Octopus');
+    // The caption is HTML now (job 019): the chips draw the agents with the static octopus.
+    const main = await read('../src/game/main.jsx');
+    assert.match(main, /import\s*\{\s*StaticOctopus\s*\}\s*from\s*['"]\.\/StaticOctopus\.js['"]/, 'main.jsx imports StaticOctopus');
+    assert.match(main, /<StaticOctopus\b/, 'main.jsx renders <StaticOctopus');
   });
 
   test('AC-6: the committed game bundle carries the shared octopus geometry and colors', async () => {
@@ -384,8 +385,6 @@ describe('job 007: iso-glow factory floor', () => {
       'filterUnits="userSpaceOnUse"',
       'url(#iso-bloom)',
       'stage.title',
-      'GATE: FAIL',
-      '<Octopus',
     ]) {
       assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
     }
@@ -475,8 +474,6 @@ describe('job 008: guided loop tour', () => {
       'filterUnits="userSpaceOnUse"',
       'url(#iso-bloom)',
       'stage.title',
-      'GATE: FAIL',
-      '<Octopus',
     ]) {
       assert.ok(loop.includes(text), `FactoryLoop still contains ${text}`);
     }
@@ -579,8 +576,8 @@ describe('job 009: approval fork on the iso floor', () => {
   test('AC-7: FactoryLoop draws the plant from NODES and TRACKS and keeps the earlier scene', async () => {
     const loop = await read('../src/game/FactoryLoop.jsx');
     const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
-    for (const name of ['NODES', 'TRACKS', 'ACCEPT_LABEL']) assert.match(sceneImport, new RegExp(`\\b${name}\\b`), `imports ${name} from ./scene.js`);
-    for (const text of ['iso-fork', 'iso-branch', 'strokeDasharray="2 4"', 'Condición', 'Escribe']) {
+    for (const name of ['NODES', 'TRACKS', 'LABELS']) assert.match(sceneImport, new RegExp(`\\b${name}\\b`), `imports ${name} from ./scene.js`);
+    for (const text of ['iso-fork', 'iso-branch', 'strokeDasharray="2 4"']) {
       assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
     }
     for (const text of [
@@ -592,8 +589,6 @@ describe('job 009: approval fork on the iso floor', () => {
       'filterUnits="userSpaceOnUse"',
       'url(#iso-bloom)',
       'stage.title',
-      'GATE: FAIL',
-      '<Octopus',
       'onSelect',
       'iso-hits',
       'iso-hit',
@@ -651,15 +646,16 @@ describe('job 010: living factory pipeline', () => {
 
   test('AC-1: the floor caption no longer repeats the stage number and title', async () => {
     const loop = await read('../src/game/FactoryLoop.jsx');
-    const caption = topLevel(loop, 'Caption');
-    assert.ok(caption.length > 0, 'FactoryLoop.jsx has a Caption function');
-    for (const text of ['stage.title', 'STAGES.length', 'Etapa']) {
-      assert.ok(!caption.includes(text), `Caption does not contain ${text}`);
-    }
-    assert.ok(caption.includes('Escribe'), 'Caption keeps the output file');
-    assert.ok(loop.includes('stage.title'), 'station labels still use stage.title');
-
+    assert.ok(!loop.includes('function Caption'), 'the composition draws no caption (job 019)');
     const main = await read('../src/game/main.jsx');
+    const caption = topLevel(main, 'DockCaption');
+    assert.ok(caption.length > 0, 'main.jsx has a DockCaption function');
+    for (const text of ['stage.title', 'STAGES.length', 'Etapa']) {
+      assert.ok(!caption.includes(text), `DockCaption does not contain ${text}`);
+    }
+    assert.ok(caption.includes('Escribe'), 'DockCaption keeps the output file');
+    assert.ok(loop.includes('stage.title'), 'the station hits still use stage.title');
+
     const tour = topLevel(main, 'TourScreen');
     assert.ok(tour.includes('Loop guiado'), 'TourScreen renders Loop guiado');
     assert.match(tour, /<h1\b[^>]*>\s*\{scenario\.title\}\s*<\/h1>/, 'TourScreen renders the scenario title h1');
@@ -724,9 +720,9 @@ describe('job 010: living factory pipeline', () => {
     assert.match(loop, /import\s*\{[^}]*\bpackageAt\b[^}]*\}\s*from\s*'\.\/pipeline\.js'/, 'FactoryLoop imports packageAt');
     const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
     assert.match(sceneImport, /\bTRACKS\b/, 'FactoryLoop imports TRACKS from ./scene.js');
-    assert.match(main, /inputProps=\{\{\s*stepIndex:\s*tour\.index,\s*onSelect,\s*pipeline:\s*true\s*\}\}/, 'the tour Player passes stepIndex: tour.index');
+    assert.match(main, /inputProps=\{\{\s*stepIndex:\s*tour\.index,\s*onSelect,\s*pipeline:\s*true,\s*split\s*\}\}/, 'the tour Player passes stepIndex: tour.index');
     assert.match(main, /stepForStation\(i\)/, 'a station click selects stepForStation(i)');
-    assert.ok(topLevel(loop, 'Caption').includes('Condición'), 'Caption renders Condición');
+    assert.ok(topLevel(main, 'DockCaption').includes('Condición'), 'DockCaption renders Condición');
   });
 
   test('AC-8: /game keeps its CSP and markup, the bundle has the sound toggle, no audio files, docs and quest log updated', async () => {
@@ -821,8 +817,8 @@ describe('job 011: keep the tour pipeline running, with moving belts', () => {
     for (const name of ['treadOffset', 'BELT_PITCH', 'BELT_PERIOD_MS', 'WIRE_PERIOD_MS']) {
       assert.match(pipelineImport, new RegExp(`\\b${name}\\b`), `FactoryLoop imports ${name} from ./pipeline.js`);
     }
-    const belt = topLevel(loop, 'Belt');
-    assert.ok(belt.length > 0, 'FactoryLoop.jsx has a top-level Belt');
+    const belt = topLevel(loop, 'Belts');
+    assert.ok(belt.length > 0, 'FactoryLoop.jsx has a top-level Belts');
     for (const text of ['treadOffset', 'BELT_PITCH', 'BELT_PERIOD_MS']) {
       assert.ok(belt.includes(text), `Belt contains ${text}`);
     }
@@ -834,7 +830,7 @@ describe('job 011: keep the tour pipeline running, with moving belts', () => {
       }
     }
     const floor = topLevel(loop, 'IsoFloor');
-    for (const name of ['Belt', 'Wires']) {
+    for (const name of ['Belts', 'Wires']) {
       assert.match(floor, new RegExp(`<${name}\\b[^>]*\\btime=`), `IsoFloor renders <${name} with a time= prop`);
     }
   });
