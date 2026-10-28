@@ -2,7 +2,9 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { STAGES } from '../src/game/engine.js';
-import { STATIONS, cameraFor, cameraFov, compositionSize, packagePosition, projectPoint, toScreen } from '../src/game/scene.js';
+import { readFile } from 'node:fs/promises';
+
+import { FLOOR_VIEWBOX, STATIONS, compositionSize, iso, isoFrame, packagePosition } from '../src/game/scene.js';
 
 const isFiniteTriple = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -17,19 +19,6 @@ test('AC-2: STATIONS has one station per stage, in order, at distinct finite pos
   }
   const keys = STATIONS.map((s) => s.position.join(','));
   assert.equal(new Set(keys).size, keys.length, 'positions are pairwise distinct');
-});
-
-test('AC-3: cameraFor targets the station from above and in front, clamping the index', () => {
-  STATIONS.forEach((station, i) => {
-    const { position, target } = cameraFor(i);
-    assert.deepEqual(target, station.position, `stage ${i} target`);
-    assert.ok(isFiniteTriple(position), `stage ${i} position is finite`);
-    assert.ok(position[1] > target[1], `stage ${i} camera above`);
-    assert.ok(position[2] > target[2], `stage ${i} camera in front`);
-  });
-  assert.deepEqual(cameraFor(-1), cameraFor(0));
-  assert.deepEqual(cameraFor(99), cameraFor(STATIONS.length - 1));
-  assert.deepEqual(cameraFor(NaN), cameraFor(0));
 });
 
 test('AC-4: packagePosition interpolates from the previous station to the current one', () => {
@@ -75,58 +64,85 @@ test('AC-5: compositionSize keeps the viewport aspect ratio, caps the long side 
   }
 });
 
-describe('job 006: camera framing and flow labels', () => {
-  const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) <= 1e-9, `${label}: ${actual} vs ${expected}`);
 
-  test('AC-1: projectPoint projects through the camera like three.js lookAt with up +y', () => {
-    const camera = { position: [0, 0, 10], target: [0, 0, 0] };
-    const p = projectPoint(camera, [2, 1, 0], 90, 2);
-    near(p.x, 0.1, 'x');
-    near(p.y, 0.1, 'y');
-    near(p.depth, 10, 'depth');
-    assert.ok(projectPoint(camera, [0, 0, 20], 90, 2).depth <= 0, 'point behind the camera has depth <= 0');
+describe('job 007: iso-glow factory floor', () => {
+  const EPS = 1e-9;
+  const near = (actual, expected, label) => assert.ok(Math.abs(actual - expected) <= EPS, `${label}: ${actual} vs ${expected}`);
+  const nearPoint = (actual, expected, label) => {
+    assert.equal(actual.length, 2, `${label} is [sx, sy]`);
+    near(actual[0], expected[0], `${label}[0]`);
+    near(actual[1], expected[1], `${label}[1]`);
+  };
 
-    STATIONS.forEach((_, i) => {
-      const cam = cameraFor(i);
-      const center = projectPoint(cam, cam.target, 45, 16 / 9);
-      near(center.x, 0, `stage ${i} target x`);
-      near(center.y, 0, `stage ${i} target y`);
-      assert.ok(center.depth > 0, `stage ${i} target in front of the camera`);
-      const right = projectPoint(cam, cam.target.map((v, k) => v + [1, 0, 0][k]), 45, 16 / 9);
-      assert.ok(right.x > 0, `stage ${i} +x projects to the right`);
-    });
+  test('AC-2: iso is the iso-figure projection kernel without offset, and scene.js credits it', async () => {
+    const C = Math.cos(Math.PI / 6);
+    nearPoint(iso([0, 0, 0]), [0, 0], 'origin');
+    nearPoint(iso([1, 0, 0]), [C, 0.5], '+x');
+    nearPoint(iso([0, 1, 0]), [-C, 0.5], '+y');
+    nearPoint(iso([0, 0, 1]), [0, -1], '+z');
+    const [ex, ey, ez] = [iso([1, 0, 0]), iso([0, 1, 0]), iso([0, 0, 1])];
+    const expected = [0, 1].map((k) => 3 * ex[k] - 2 * ey[k] + 5 * ez[k]);
+    nearPoint(iso([3, -2, 5]), expected, 'linear combination');
+
+    const source = await readFile(new URL('../src/game/scene.js', import.meta.url), 'utf8');
+    assert.ok(source.includes('iso-figure'), 'scene.js credits iso-figure');
+    assert.ok(source.includes('MIT'), 'scene.js names the MIT license');
   });
 
-  test('AC-2: cameraFov is 45 for landscape and invalid input, wider (at most 70) for portrait', () => {
-    assert.equal(cameraFov(16 / 9), 45);
-    assert.equal(cameraFov(1), 45);
-    const portrait = cameraFov(390 / 844);
-    assert.ok(portrait > 45 && portrait <= 70, `portrait fov ${portrait}`);
-    for (const aspect of [0, -1, NaN]) assert.equal(cameraFov(aspect), 45, `aspect ${aspect}`);
-  });
-
-  test('AC-3: each stage shows its station and both neighbors inside the middle of the view', () => {
-    for (const [w, h] of [[1920, 962], [1280, 720], [1024, 640]]) {
-      const aspect = w / h;
-      const fov = cameraFov(aspect);
-      STATIONS.forEach((_, i) => {
-        const cam = cameraFor(i);
-        for (const j of [i - 1, i, i + 1]) {
-          if (j < 0 || j >= STATIONS.length) continue;
-          const label = `${w}x${h} stage ${i} station ${j}`;
-          const p = projectPoint(cam, STATIONS[j].position, fov, aspect);
-          assert.ok(p.depth > 0, `${label}: depth ${p.depth}`);
-          assert.ok(Math.abs(p.x) <= 0.5, `${label}: x ${p.x}`);
-          assert.ok(Math.abs(p.y) <= 0.5, `${label}: y ${p.y}`);
-          if (j !== i) assert.ok(Math.abs(p.x) >= 0.2, `${label}: neighbor x ${p.x} is apart from the current station`);
-        }
-      });
+  test('AC-3: STATIONS are iso boxes, one per stage, non-overlapping, reading left to right', () => {
+    assert.deepEqual(
+      STATIONS.map((s) => s.id),
+      STAGES.map((s) => s.id),
+    );
+    for (const { id, position, size } of STATIONS) {
+      assert.ok(isFiniteTriple(position), `${id} position is 3 finite numbers`);
+      assert.equal(position[2], 0, `${id} stands on the floor`);
+      assert.ok(isFiniteTriple(size) && size.every((v) => v > 0), `${id} size is 3 finite positive numbers`);
+    }
+    const disjoint = (a0, a1, b0, b1) => a1 <= b0 || b1 <= a0;
+    for (let i = 0; i < STATIONS.length; i += 1) {
+      for (let j = i + 1; j < STATIONS.length; j += 1) {
+        const [a, b] = [STATIONS[i], STATIONS[j]];
+        const xs = disjoint(a.position[0], a.position[0] + a.size[0], b.position[0], b.position[0] + b.size[0]);
+        const ys = disjoint(a.position[1], a.position[1] + a.size[1], b.position[1], b.position[1] + b.size[1]);
+        assert.ok(xs || ys, `${a.id} and ${b.id} footprints do not overlap`);
+      }
+    }
+    for (let i = 1; i < STATIONS.length; i += 1) {
+      assert.ok(
+        iso(STATIONS[i].position)[0] > iso(STATIONS[i - 1].position)[0],
+        `${STATIONS[i].id} is right of ${STATIONS[i - 1].id} on screen`,
+      );
     }
   });
 
-  test('AC-4: toScreen maps NDC to composition pixels around the shifted view center', () => {
-    assert.deepEqual(toScreen({ x: 0, y: 0 }, 1920, 962, 700, 600), { x: 700, y: 600 });
-    assert.deepEqual(toScreen({ x: 1, y: 1 }, 1920, 962, 700, 600), { x: 1660, y: 119 });
-    assert.deepEqual(toScreen({ x: -0.5, y: -0.5 }, 1920, 962, 700, 600), { x: 220, y: 840.5 });
+  test('AC-4: isoFrame pads the tightest projected box, and FLOOR_VIEWBOX holds every station corner', () => {
+    assert.deepEqual(isoFrame([[0, 0, 0]], 10), { x: -10, y: -10, width: 20, height: 20 });
+
+    const points = [[0, 0, 0], [120, 0, 0], [0, 80, 0], [40, 30, 55], [-15, 60, -8], [200, -40, 12]];
+    const projected = points.map(iso);
+    const xs = projected.map((p) => p[0]);
+    const ys = projected.map((p) => p[1]);
+    for (const pad of [0, 7, 24]) {
+      const box = isoFrame(points, pad);
+      near(box.x + pad, Math.min(...xs), `pad ${pad} left`);
+      near(box.x + box.width - pad, Math.max(...xs), `pad ${pad} right`);
+      near(box.y + pad, Math.min(...ys), `pad ${pad} top`);
+      near(box.y + box.height - pad, Math.max(...ys), `pad ${pad} bottom`);
+    }
+    const defaultPad = isoFrame(points);
+    near(defaultPad.x + 24, Math.min(...xs), 'default pad is 24');
+
+    assert.ok(Object.isFrozen(FLOOR_VIEWBOX), 'FLOOR_VIEWBOX is frozen');
+    const { x, y, width, height } = FLOOR_VIEWBOX;
+    assert.ok([x, y, width, height].every(Number.isFinite) && width > 0 && height > 0, 'finite, positive viewBox');
+    for (const { id, position, size } of STATIONS) {
+      for (const corner of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const p = position.map((v, k) => v + ((corner >> k) & 1) * size[k]);
+        const [sx, sy] = iso(p);
+        assert.ok(sx >= x && sx <= x + width, `${id} corner ${p} x ${sx} inside`);
+        assert.ok(sy >= y && sy <= y + height, `${id} corner ${p} y ${sy} inside`);
+      }
+    }
   });
 });

@@ -1,44 +1,180 @@
-// Layout of the 3D factory floor: where each stage's station stands, where the
-// camera looks from, where the job package is, and how big the composition is.
-// Plain JS with no React or three.js imports, so it runs (and is tested) in Node.
+// Layout of the isometric factory floor: where each stage's station stands, how
+// big it is, where the job package is, and how big the composition is.
+// Plain JS with no React imports, so it runs (and is tested) in Node.
+//
+// The projection kernel comes from iso-figure by Tolga Cohce (MIT License,
+// github.com/MrBongoC/ai-iso-skill), via the iso-glow skill. Coordinates are
+// iso-figure units: +x runs down-right on screen, +y down-left, +z up, and the
+// floor is z = 0.
 import { STAGES } from './engine.js';
 
-/** Distance between neighboring stations along the x axis (world units). */
-const SPACING = 4.5;
+const COS = Math.cos(Math.PI / 6);
+const SIN = Math.sin(Math.PI / 6);
+
+/** Depth (y) and height (z) of every station box. */
+const STATION_DEPTH = 64;
+const STATION_HEIGHT = 22;
+/** Narrowest station; wide enough for the job package and one agent pod. */
+const MIN_STATION_WIDTH = 64;
+/** Belt length between neighboring stations. */
+const BELT_LENGTH = 44;
+/** Agent pods: size, distance between pod corners, inset from the station corner. */
+const POD_SIZE = Object.freeze([14, 14, 12]);
+const POD_PITCH = 22;
+const POD_INSET = 8;
+/** Job package: size and offset from the station corner (front lane of the deck). */
+const PACKAGE_SIZE = 18;
+const PACKAGE_OFFSET = Object.freeze([10, 38, STATION_HEIGHT]);
+/** The belt lane the package rides on (y range). */
+const LANE = Object.freeze([34, 60]);
+/** How far behind the stations (negative y) the rework loop runs. */
+const REWORK_BACK = 84;
 /**
- * How much the line of stations bends away from the camera at its ends. Zero
- * keeps them on a straight line, so no neighbor ever comes closer to the camera
- * than the current station (a bend toward the camera made neighbors look huge).
+ * Where the rework loop leaves and joins the stations: far enough behind a box
+ * (more than its height) that the ends show above its back edge on screen.
  */
-const BEND = 0;
-/**
- * Camera offset from the station it looks at: above and in front, at 45 degrees
- * and far enough back that the previous and next stations fit in the view.
- */
-const CAMERA_OFFSET = Object.freeze([0, 12, 12]);
-/** Vertical field of view (degrees) on landscape screens. */
-const LANDSCAPE_FOV = 45;
-/** Widest vertical field of view (degrees) on portrait screens. */
-const MAX_FOV = 70;
+const REWORK_END = STATION_HEIGHT + 8;
+/** Ground plate margin around the stations, and its thickness. */
+const PLATE_MARGIN = 24;
+const PLATE_THICKNESS = 6;
+/** Station label font size (viewBox units) and monospace character width. */
+const LABEL_SIZE = 12;
+const CHAR_WIDTH = 0.62 * LABEL_SIZE;
+/** Station labels sit just in front of (down-left of) each station's front-left corner. */
+const LABEL_GAP = 10;
 
 const MAX_SIDE = 1920;
 const FALLBACK_SIZE = Object.freeze({ width: 1280, height: 720 });
 
-// `+ 0` turns -0 into 0, so positions compare equal with Object.is.
-const round = (v) => Math.round(v * 100) / 100 + 0;
 const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
 
 /**
- * One station per stage, same order as STAGES, on a line (or a gentle arc when
- * BEND > 0) on the floor
- * (y = 0) centered on the middle stage.
+ * The iso-figure projection kernel without offset.
+ * @param {number[]} point [x, y, z]
+ * @returns {number[]} [sx, sy] in viewBox units
+ */
+export function iso([x, y, z]) {
+  return [(x - y) * COS, (x + y) * SIN - z];
+}
+
+const stationWidth = (agents) => Math.max(MIN_STATION_WIDTH, POD_INSET * 2 + agents * POD_PITCH - (POD_PITCH - POD_SIZE[0]));
+
+/**
+ * One station box per stage, same order as STAGES, in a line along +x so the
+ * flow reads left to right (and top to bottom) on screen. `position` is the
+ * box's back-top-left floor corner, `size` is [width, depth, height]; a station
+ * grows wider with its number of agents.
  */
 export const STATIONS = Object.freeze(
-  STAGES.map((stage, i) => {
-    const x = round((i - (STAGES.length - 1) / 2) * SPACING);
-    const z = round(-BEND * x * x);
-    return Object.freeze({ id: stage.id, position: Object.freeze([x, 0, z]) });
-  }),
+  STAGES.reduce((list, stage) => {
+    const prev = list[list.length - 1];
+    const x = prev ? prev.position[0] + prev.size[0] + BELT_LENGTH : 0;
+    const size = Object.freeze([stationWidth(stage.agents.length), STATION_DEPTH, STATION_HEIGHT]);
+    list.push(Object.freeze({ id: stage.id, position: Object.freeze([x, 0, 0]), size }));
+    return list;
+  }, []),
+);
+
+/** Floor geometry the composition draws with, in iso-figure units. */
+export const FLOOR = Object.freeze({
+  podSize: POD_SIZE,
+  podPitch: POD_PITCH,
+  podInset: POD_INSET,
+  packageSize: PACKAGE_SIZE,
+  packageOffset: PACKAGE_OFFSET,
+  lane: LANE,
+  plateThickness: PLATE_THICKNESS,
+  labelSize: LABEL_SIZE,
+  labelGap: LABEL_GAP,
+});
+
+const stationCenterX = (id) => {
+  const { position, size } = STATIONS.find((s) => s.id === id);
+  return position[0] + size[0] / 2;
+};
+
+/**
+ * The rework loop on the floor, behind the stations: from behind
+ * "wait-for-all", back along the floor, to just behind "build".
+ */
+export const REWORK_POINTS = Object.freeze(
+  [
+    [stationCenterX('wait-for-all'), -REWORK_END, 0],
+    [stationCenterX('wait-for-all'), -REWORK_BACK, 0],
+    [stationCenterX('build'), -REWORK_BACK, 0],
+    [stationCenterX('build'), -REWORK_END, 0],
+  ].map((p) => Object.freeze(p)),
+);
+
+const last = STATIONS[STATIONS.length - 1];
+/** The ground plate under the whole floor: [x, y, z] corner and [w, d, h] size. */
+export const PLATE = Object.freeze({
+  position: Object.freeze([-PLATE_MARGIN, -REWORK_BACK - PLATE_MARGIN, -PLATE_THICKNESS]),
+  size: Object.freeze([
+    last.position[0] + last.size[0] + 2 * PLATE_MARGIN,
+    STATION_DEPTH + REWORK_BACK + 2 * PLATE_MARGIN,
+    PLATE_THICKNESS,
+  ]),
+});
+
+/**
+ * Where a station's label is anchored: just in front of its front-left floor
+ * corner. The label is drawn flat on screen, ending at this point.
+ * @param {number} i station index
+ * @returns {number[]}
+ */
+export function labelAnchor(i) {
+  const [x, y] = STATIONS[i].position;
+  return [x - LABEL_GAP, y + STATION_DEPTH + LABEL_GAP, 0];
+}
+
+const boxCorners = (position, size) =>
+  [0, 1, 2, 3, 4, 5, 6, 7].map((c) => position.map((v, k) => v + ((c >> k) & 1) * size[k]));
+
+/**
+ * The tightest screen box around the projection of every point, grown by `pad`
+ * on each side.
+ * @param {number[][]} points [x, y, z] points
+ * @param {number} [pad]
+ * @returns {{ x: number, y: number, width: number, height: number }}
+ */
+export function isoFrame(points, pad = 24) {
+  const projected = points.map(iso);
+  const xs = projected.map((p) => p[0]);
+  const ys = projected.map((p) => p[1]);
+  const x0 = Math.min(...xs);
+  const y0 = Math.min(...ys);
+  return {
+    x: x0 - pad,
+    y: y0 - pad,
+    width: Math.max(...xs) - x0 + 2 * pad,
+    height: Math.max(...ys) - y0 + 2 * pad,
+  };
+}
+
+// The tallest part on a deck: an agent pod or the job package.
+const TALLEST = STATION_HEIGHT + Math.max(POD_SIZE[2], PACKAGE_SIZE);
+
+// A label `${n} · ${title}` drawn flat on screen and ending at its anchor: moving
+// by [-a, +a, 0] in iso units moves 2a·cos(30°) left on screen and not up or down.
+function labelPoints(i) {
+  const anchor = labelAnchor(i);
+  const width = (String(i + 1).length + 3 + STAGES[i].title.length) * CHAR_WIDTH;
+  const a = width / (2 * COS);
+  return [anchor, [anchor[0] - a, anchor[1] + a, 0], [anchor[0], anchor[1], LABEL_SIZE]];
+}
+
+/**
+ * The viewBox that frames the whole floor: every station box up to the tallest
+ * deck part, the rework loop, the ground plate, and the station labels.
+ */
+export const FLOOR_VIEWBOX = Object.freeze(
+  isoFrame([
+    ...STATIONS.flatMap(({ position, size }) => boxCorners(position, [size[0], size[1], TALLEST])),
+    ...REWORK_POINTS,
+    ...boxCorners(PLATE.position, PLATE.size),
+    ...STATIONS.flatMap((_, i) => labelPoints(i)),
+  ]),
 );
 
 /** Clamps a stage index to a valid station index; non-finite values become 0. */
@@ -48,78 +184,8 @@ function stationIndex(stageIndex) {
 }
 
 /**
- * Camera placement for a stage: looks at the station from above and in front.
- * @param {number} stageIndex
- * @returns {{ position: number[], target: number[] }}
- */
-export function cameraFor(stageIndex) {
-  const target = [...STATIONS[stationIndex(stageIndex)].position];
-  const position = target.map((v, k) => v + CAMERA_OFFSET[k]);
-  return { position, target };
-}
-
-/**
- * Vertical field of view in degrees for a width / height aspect ratio. Landscape
- * gets 45; portrait gets a wider angle (up to 70) so the scene still fits across.
- * Non-finite or non-positive aspects get 45.
- * @param {number} aspect
- * @returns {number}
- */
-export function cameraFov(aspect) {
-  if (!Number.isFinite(aspect) || aspect <= 0 || aspect >= 1) return LANDSCAPE_FOV;
-  const half = Math.tan(((LANDSCAPE_FOV / 2) * Math.PI) / 180);
-  return Math.min(MAX_FOV, (2 * Math.atan(half / aspect) * 180) / Math.PI);
-}
-
-const sub = (a, b) => a.map((v, k) => v - b[k]);
-const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const normalize = (a) => {
-  const length = Math.hypot(...a);
-  return a.map((v) => v / length);
-};
-
-/**
- * Projects a world point through a perspective camera, the same way three.js's
- * PerspectiveCamera does after lookAt(target) with up +y and no view offset.
- * @param {{ position: number[], target: number[] }} camera as returned by cameraFor
- * @param {number[]} point world [x, y, z]
- * @param {number} fov vertical field of view in degrees
- * @param {number} aspect width / height
- * @returns {{ x: number, y: number, depth: number }} normalized device coordinates
- *   (-1..1 is on screen, +x right, +y up); depth <= 0 means behind the camera
- */
-export function projectPoint(camera, point, fov, aspect) {
-  const forward = normalize(sub(camera.target, camera.position));
-  const right = normalize(cross(forward, [0, 1, 0]));
-  const up = cross(right, forward);
-  const v = sub(point, camera.position);
-  const depth = dot(v, forward);
-  const half = Math.tan(((fov / 2) * Math.PI) / 180);
-  return {
-    x: dot(v, right) / (depth * half * aspect),
-    y: dot(v, up) / (depth * half),
-    depth,
-  };
-}
-
-/**
- * Pixel position in the composition for normalized device coordinates when the
- * view is shifted so NDC (0, 0) lands at (centerX, centerY), as setViewOffset does.
- * @param {{ x: number, y: number }} ndc
- * @param {number} width
- * @param {number} height
- * @param {number} centerX
- * @param {number} centerY
- * @returns {{ x: number, y: number }}
- */
-export function toScreen(ndc, width, height, centerX, centerY) {
-  return { x: centerX + (ndc.x * width) / 2, y: centerY - (ndc.y * height) / 2 };
-}
-
-/**
  * Where the job package is on its way from the previous station (progress 0)
- * to the current one (progress 1).
+ * to the current one (progress 1), as a station position (back-top-left corner).
  * @param {number} stageIndex
  * @param {number} progress 0..1, clamped; non-finite means 1 (arrived)
  * @returns {number[]}
