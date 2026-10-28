@@ -16,8 +16,6 @@ const STATION_DEPTH = 64;
 const STATION_HEIGHT = 22;
 /** Narrowest station; wide enough for the job package and one agent pod. */
 const MIN_STATION_WIDTH = 52;
-/** Belt length between neighboring stations. */
-const BELT_LENGTH = 24;
 /** Agent pods: size, distance between pod corners, inset from the station corner. */
 const POD_SIZE = Object.freeze([14, 14, 12]);
 const POD_PITCH = 18;
@@ -30,28 +28,55 @@ const LANE = Object.freeze([34, 60]);
 /** Ground plate margin around the plant, and its thickness. */
 const PLATE_MARGIN = 24;
 const PLATE_THICKNESS = 6;
-/** Station label font size (viewBox units) and monospace character width. */
+/** Label font size (viewBox units) and monospace character width. */
 const LABEL_SIZE = 12;
 const CHAR_WIDTH = 0.62 * LABEL_SIZE;
-/** Station labels sit just in front of (down-left of) each station's front-left corner. */
+/** Labels sit this far under the corner or the box they name. */
 const LABEL_GAP = 10;
 
-/** Bins at the intake sorting gate: size, and the gap between the station row and the bin. */
+/** Bins at the intake sorting gate and the output bays: sizes. */
 const BIN_SIZE = Object.freeze([40, 28, 12]);
-const BIN_GAP = 20;
-/** Output bays: the two kinds of size, and the gap between the station row and a bay. */
 const BAY_SIZE = Object.freeze([56, 32, 16]);
-const END_BAY_SIZE = Object.freeze([56, STATION_DEPTH, 16]);
-const BAY_GAP = 20;
-/** How far past the last station the end bay stands, and how far past the approver the REJECT bay stands. */
-const END_BAY_GAP = 30;
-/** The labels float this high above their bin or bay. */
-const NODE_LABEL_LIFT = 16;
-/** Where a package turns off the deck lane: this far in from the package's own corner. */
-const JOG = 24;
-/** Gate loops run in front of the station row at these y values (gate to build, review to build). */
+/** Where a package turns off the deck lane: the gate loops run this far in front of the row. */
 const GATE_LOOP_Y = STATION_DEPTH + 12;
-const REVIEW_LOOP_Y = STATION_DEPTH + 28;
+
+/**
+ * The plant is four stacked layers (tiers), each a row of the floor along +x, one
+ * behind the other in y. A row's stations are listed by their x; the plant is a
+ * serpentine, so the line turns at the end of each layer and runs back the other way.
+ */
+const ROW_PITCH = 132;
+const LAYERS = Object.freeze([
+  { id: 'entrada', title: 'Entrada' },
+  { id: 'produccion', title: 'Producción' },
+  { id: 'control', title: 'Control' },
+  { id: 'salida', title: 'Salida' },
+]);
+/** Station id to [x, layer index]. */
+const PLACE = Object.freeze({
+  queue: [-30, 0],
+  intake: [46, 0],
+  route: [122, 0],
+  spec: [122, 1],
+  build: [46, 1],
+  gate: [-30, 1],
+  review: [-32, 2],
+  approve: [76, 2],
+  merge: [172, 3],
+});
+const rowY = (layer) => layer * ROW_PITCH;
+/** Each layer stands this much higher than the one in front of it, so the layers read as terraces. */
+const TERRACE = 48;
+const tierZ = (layer) => (LAYERS.length - 1 - layer) * TERRACE;
+/** The z of a package riding on a layer's deck. */
+const deckZ = (layer) => tierZ(layer) + STATION_HEIGHT;
+/** The turns of the serpentine belt, as the x of the package's corner. */
+const TURN_RIGHT = 190;
+const TURN_LEFT = -60;
+/** Layer slabs: x range and the margin behind the row, per layer (the lifts stand off the slabs). */
+const LAYER_BACK = 24;
+const LAYER_FRONT = Object.freeze([124, 100, 90, 130]);
+const LAYER_RANGE = Object.freeze([[-42, 184], [-38, 216], [-38, 152], [-30, 320]]);
 
 const MAX_SIDE = 1920;
 const FALLBACK_SIZE = Object.freeze({ width: 1280, height: 720 });
@@ -70,19 +95,16 @@ export function iso([x, y, z]) {
 const stationWidth = (agents) => Math.max(MIN_STATION_WIDTH, POD_INSET * 2 + agents * POD_PITCH - (POD_PITCH - POD_SIZE[0]));
 
 /**
- * One station box per stage, same order as STAGES, in a line along +x so the
- * flow reads left to right (and top to bottom) on screen. `position` is the
- * box's back-top-left floor corner, `size` is [width, depth, height]; a station
- * grows wider with its number of agents.
+ * One station box per stage, same order as STAGES. `position` is the box's
+ * back-top-left floor corner, `size` is [width, depth, height]; a station grows
+ * wider with its number of agents. `layer` is the tier it stands on.
  */
 export const STATIONS = Object.freeze(
-  STAGES.reduce((list, stage) => {
-    const prev = list[list.length - 1];
-    const x = prev ? prev.position[0] + prev.size[0] + BELT_LENGTH : 0;
+  STAGES.map((stage) => {
+    const [x, layer] = PLACE[stage.id];
     const size = Object.freeze([stationWidth(stage.agents.length), STATION_DEPTH, STATION_HEIGHT]);
-    list.push(Object.freeze({ id: stage.id, position: Object.freeze([x, 0, 0]), size }));
-    return list;
-  }, []),
+    return Object.freeze({ id: stage.id, layer, position: Object.freeze([x, rowY(layer), tierZ(layer)]), size });
+  }),
 );
 
 /** Floor geometry the composition draws with, in iso-figure units. */
@@ -111,7 +133,7 @@ const sum = (a, b) => a.map((v, k) => v + b[k]);
 /** The package's resting min corner on a station deck. */
 const deckPoint = ({ position }) => sum(position, PACKAGE_OFFSET);
 /** A package centred on a node of size [w, d], standing on its top face of height h. */
-const topPoint = (position, [w, d, h]) => [position[0] + (w - PACKAGE_SIZE) / 2, position[1] + (d - PACKAGE_SIZE) / 2, h];
+const topPoint = (position, [w, d, h]) => [position[0] + (w - PACKAGE_SIZE) / 2, position[1] + (d - PACKAGE_SIZE) / 2, position[2] + h];
 
 const stationNode = (st, i) => ({
   id: st.id,
@@ -122,127 +144,188 @@ const stationNode = (st, i) => ({
   point: deckPoint(st),
 });
 const lowNode = (id, kind, label, position, size, point = topPoint(position, size)) => ({ id, kind, label, position, size, point });
+/** A bay whose package spot is on the deck lane at x = `px` in layer row `y`. */
+const bayAt = (id, label, px, y) => lowNode(id, 'bay', label, [px - (BAY_SIZE[0] - PACKAGE_SIZE) / 2, y - (BAY_SIZE[1] - PACKAGE_SIZE) / 2, tierZ(3)], BAY_SIZE);
 
 // Intake's sorting gate has three exits: ACCEPT rides the belt on; NEEDS-INFO goes to
 // a bin in front of the row and REJECT to a bin behind it.
 const intake = station('intake');
 const [ix] = intake.position;
-// The approver's fork: ESCALATE goes to a bay behind the row, and the REJECT-ed
-// jobs of a closed PR end in a bay next to it.
-const approve = station('approve');
-const [ax] = approve.position;
-const last = STATIONS[STATIONS.length - 1];
-const [mx] = last.position;
+const lane = PACKAGE_OFFSET[1];
+const outY = rowY(3) + lane;
 
 /**
  * Everything a package can stand on: one node per station, the two bins at
- * intake's sorting gate and the four output bays. `point` is the package's resting
- * min corner there (the corner with the smallest x, y and z).
+ * intake's sorting gate and the four output bays (the last layer). `point` is the
+ * package's resting min corner there (the corner with the smallest x, y and z).
  */
 export const NODES = deepFreeze(
   Object.fromEntries(
     [
       ...STATIONS.map(stationNode),
-      lowNode('bin-needs-info', 'bin', 'NEEDS-INFO', [ix + 24, STATION_DEPTH + BIN_GAP, 0], BIN_SIZE),
-      lowNode('bin-reject', 'bin', 'REJECT', [ix + 24, -BIN_GAP - BIN_SIZE[1], 0], BIN_SIZE),
-      lowNode('bay-merged', 'bay', 'merged', [mx + last.size[0] + END_BAY_GAP, 0, 0], END_BAY_SIZE, [
-        mx + last.size[0] + END_BAY_GAP + (END_BAY_SIZE[0] - PACKAGE_SIZE) / 2,
-        PACKAGE_OFFSET[1],
-        END_BAY_SIZE[2],
-      ]),
-      lowNode('bay-awaiting-merge', 'bay', 'awaiting-merge', [mx + 15, STATION_DEPTH + BAY_GAP, 0], BAY_SIZE),
-      lowNode('bay-needs-human', 'bay', 'needs-human', [ax + 15, -BAY_GAP - BAY_SIZE[1], 0], BAY_SIZE),
-      lowNode('bay-rejected', 'bay', 'rejected', [ax + 15 + BAY_SIZE[0] + 24, -BAY_GAP - BAY_SIZE[1], 0], BAY_SIZE),
+      lowNode('bin-needs-info', 'bin', 'NEEDS-INFO', [ix + 24, STATION_DEPTH + 20, tierZ(0)], BIN_SIZE),
+      lowNode('bin-reject', 'bin', 'REJECT', [ix + 24, -20 - BIN_SIZE[1], tierZ(0)], BIN_SIZE),
+      bayAt('bay-merged', 'merged', 267, outY),
+      bayAt('bay-awaiting-merge', 'awaiting-merge', 182, outY + 53),
+      bayAt('bay-needs-human', 'needs-human', 110, outY),
+      bayAt('bay-rejected', 'rejected', 6, outY),
     ].map((node) => [node.id, node]),
   ),
 );
 
 const pt = (id) => NODES[id].point;
-const at3 = ([x, y, z], { x: nx = x, y: ny = y, z: nz = z }) => [nx, ny, nz];
 const copy = (p) => [...p];
 
 // Builds a polyline between two nodes: the start, the corners the route turns at
 // and the end. Each corner changes one coordinate of the one before it.
 const track = (from, to, kind, ...corners) => ({ from, to, kind, points: [copy(pt(from)), ...corners, copy(pt(to))] });
-const belt = (from, to) => track(from, to, 'belt');
+const belt = (from, to, ...corners) => track(from, to, 'belt', ...corners);
 
 /**
- * Where packages travel. Belts join the stations in order. Branches leave the
- * line at the sorting gate, the approver's fork and the merge. Loops send a job
- * back (NEEDS-INFO to intake, a failed gate or CHANGES to build). Human tracks are
- * what a person does: merge, rework or close a PR. Every segment changes exactly
- * one coordinate, so each one draws as a straight iso hairline. Points are where a
- * package's min corner passes.
+ * Where packages travel. The belts join the stations in order and snake through the
+ * four layers: right in Entrada, back left in Producción, right again in Control,
+ * with a lift at the end of each layer. Branches leave the line at the sorting gate,
+ * the approver's fork and the merge. Loops send a job back (NEEDS-INFO to intake, a
+ * failed gate or CHANGES to build). Human tracks are what a person does: merge,
+ * rework or close a PR. Every segment changes exactly one coordinate, so each one
+ * draws as a straight iso hairline. Points are where a package's min corner passes.
  */
 export const TRACKS = (() => {
-  const z = STATION_HEIGHT;
+  const [d0, d1, d2, d3] = LAYERS.map((_, k) => deckZ(k));
+  const row = (layer) => rowY(layer) + lane;
   const ip = pt('intake');
   const bin = pt('bin-needs-info');
   const reject = pt('bin-reject');
   const ap = pt('approve');
   const human = pt('bay-needs-human');
+  const rejected = pt('bay-rejected');
   const mp = pt('merge');
   const merged = pt('bay-merged');
   const awaiting = pt('bay-awaiting-merge');
   const build = pt('build');
-  const behindY = human[1];
+  const gate = pt('gate');
+  const review = pt('review');
   return deepFreeze([
-    ...STATIONS.slice(1).map((st, i) => belt(STATIONS[i].id, st.id)),
-    track('intake', 'bin-needs-info', 'branch', [ip[0], bin[1], z], [bin[0], bin[1], z]),
-    track('intake', 'bin-reject', 'branch', [reject[0], ip[1], z], [reject[0], reject[1], z]),
-    track('approve', 'bay-needs-human', 'branch', [human[0], ap[1], z], [human[0], behindY, z]),
-    track('merge', 'bay-merged', 'branch', [merged[0], mp[1], z]),
-    track('merge', 'bay-awaiting-merge', 'branch', [mp[0], awaiting[1], z], [awaiting[0], awaiting[1], z]),
-    track('bin-needs-info', 'intake', 'loop', [bin[0], bin[1], z], [bin[0], ip[1], z]),
-    track('gate', 'build', 'loop', at3(pt('gate'), { y: GATE_LOOP_Y }), at3(build, { y: GATE_LOOP_Y })),
-    track('review', 'build', 'loop', at3(pt('review'), { y: REVIEW_LOOP_Y }), at3(build, { y: REVIEW_LOOP_Y })),
-    track('bay-awaiting-merge', 'bay-merged', 'human', [merged[0], awaiting[1], awaiting[2]]),
-    track('bay-needs-human', 'build', 'human', [human[0], human[1], z], [build[0] + JOG, human[1], z], [build[0] + JOG, build[1], z]),
-    track('bay-needs-human', 'bay-rejected', 'human'),
+    belt('queue', 'intake'),
+    belt('intake', 'route'),
+    belt('route', 'spec', [TURN_RIGHT, row(0), d0], [TURN_RIGHT, row(0), d1], [TURN_RIGHT, row(1), d1]),
+    belt('spec', 'build'),
+    belt('build', 'gate'),
+    belt('gate', 'review', [TURN_LEFT, row(1), d1], [TURN_LEFT, row(1), d2], [TURN_LEFT, row(2), d2]),
+    belt('review', 'approve'),
+    belt('approve', 'merge', [mp[0], ap[1], d2], [mp[0], ap[1], d3]),
+    track('intake', 'bin-needs-info', 'branch', [ip[0], bin[1], d0], [bin[0], bin[1], d0]),
+    track('intake', 'bin-reject', 'branch', [reject[0], ip[1], d0], [reject[0], reject[1], d0]),
+    track('approve', 'bay-needs-human', 'branch', [human[0], ap[1], d2], [human[0], human[1], d2]),
+    track('merge', 'bay-merged', 'branch', [merged[0], mp[1], d3]),
+    track('merge', 'bay-awaiting-merge', 'branch', [mp[0], awaiting[1], d3]),
+    track('bin-needs-info', 'intake', 'loop', [bin[0], bin[1], d0], [bin[0], ip[1], d0]),
+    track('gate', 'build', 'loop', [gate[0], rowY(1) + GATE_LOOP_Y, d1], [build[0], rowY(1) + GATE_LOOP_Y, d1]),
+    track('review', 'build', 'loop', [build[0], review[1], d2], [build[0], review[1], d1]),
+    track('bay-awaiting-merge', 'bay-merged', 'human', [awaiting[0], awaiting[1], d3], [merged[0], awaiting[1], d3], [merged[0], merged[1], d3]),
+    track('bay-needs-human', 'build', 'human', [human[0], human[1], d3], [build[0], human[1], d3], [build[0], human[1], d1]),
+    track('bay-needs-human', 'bay-rejected', 'human', [human[0], human[1], d3], [rejected[0], human[1], d3]),
   ]);
 })();
 
-/** The plant's ground plate and the "ACCEPT" label, in iso-figure units. */
+/**
+ * The layers' slabs, one per layer: `position` is the slab's back-left top corner
+ * (its top face is at the layer's height) and `size` its [width, depth]. The layers
+ * stand higher the further back they are, like terraces.
+ */
+export const LAYER_PLATES = deepFreeze(
+  LAYERS.map((layer, k) => {
+    const [x0, x1] = LAYER_RANGE[k];
+    const y0 = k === 0 ? -20 - BIN_SIZE[1] - LAYER_BACK : rowY(k) - LAYER_BACK;
+    const y1 = rowY(k) + LAYER_FRONT[k];
+    return { ...layer, index: k, position: [x0, y0, tierZ(k)], size: [x1 - x0, y1 - y0] };
+  }),
+);
+
 const nodeBoxes = Object.values(NODES).map(({ position, size }) => ({ position, size }));
 const trackPoints = TRACKS.flatMap((t) => t.points);
-const reach = PACKAGE_SIZE;
-const plateX1 = Math.max(...nodeBoxes.map(({ position, size }) => position[0] + size[0]), ...trackPoints.map((p) => p[0] + reach)) + PLATE_MARGIN;
-const plateY0 = Math.min(...nodeBoxes.map(({ position }) => position[1]), ...trackPoints.map((p) => p[1])) - PLATE_MARGIN;
-const plateY1 = Math.max(...nodeBoxes.map(({ position, size }) => position[1] + size[1]), ...trackPoints.map((p) => p[1] + reach)) + PLATE_MARGIN;
-/** The ground plate under the whole plant (stations, bins, bays and tracks): [x, y, z] corner and [w, d, h] size. */
-export const PLATE = Object.freeze({
-  position: Object.freeze([-PLATE_MARGIN, plateY0, -PLATE_THICKNESS]),
-  size: Object.freeze([plateX1 + PLATE_MARGIN, plateY1 - plateY0, PLATE_THICKNESS]),
+
+// --- Labels -----------------------------------------------------------------------
+
+/** The names the floor shows for the stations (the full titles live in the text column). */
+const SHORT_TITLES = Object.freeze({ review: 'Revisión', gate: 'Gate', approve: 'Aprobación', build: 'Build', spec: 'Spec' });
+const stationLabel = (i) => `${i + 1} · ${SHORT_TITLES[STAGES[i].id] ?? STAGES[i].title}`;
+
+// Labels are flat text at fixed screen positions (iso screen units), found by placing
+// each one beside the thing it names where no box and no other label is in the way;
+// a test keeps them apart. `hot` is the node a label lights up with.
+const SPOTS = Object.freeze({
+  'queue': ['end', -85.4, -145],
+  'intake': ['end', -17.6, -89],
+  'route': ['start', 154.7, -75],
+  'spec': ['middle', -29.1, 103],
+  'build': ['middle', -100.9, 65],
+  'gate': ['end', -199.7, -27],
+  'review': ['end', -315.8, 86],
+  'approve': ['start', -113.8, 130],
+  'merge': ['start', -145, 292],
+  'bin-needs-info': ['start', 40.3, -11],
+  'bin-reject': ['middle', 110.2, -155],
+  'bay-merged': ['middle', -144.7, 395.5],
+  'bay-awaiting-merge': ['middle', -264.2, 379.5],
+  'bay-needs-human': ['middle', -281, 225],
+  'bay-rejected': ['middle', -370.7, 265],
+  'accept': ['end', 64, -30],
+  'apv': ['start', -131.5, 171],
+  'esc': ['end', -231.4, 178],
+  'gatefail': ['end', -200.5, -2],
+  'changes': ['middle', -157.9, 37],
+  'rework': ['end', -292.8, 124.4],
+  'close': ['middle', -317.6, 205],
+  'hmerge': ['middle', -203.3, 354.7],
+  'layer-entrada': ['end', -153.8, -109],
+  'layer-produccion': ['end', -265.8, -21],
+  'layer-control': ['end', -345.5, 112],
+  'layer-salida': ['end', -487.5, 250],
+});
+const label = (id, text, hot = null, layer = false) => {
+  const [anchor, x, y] = SPOTS[id];
+  return { id, text, anchor, x, y, hot, layer };
+};
+const NAMES = Object.freeze({
+  'accept': 'ACCEPT',
+  'apv': 'APPROVE',
+  'esc': 'ESCALATE',
+  'gatefail': 'GATE: FAIL',
+  'changes': 'CHANGES',
+  'rework': 'REWORK',
+  'close': 'CLOSE',
+  'hmerge': 'MERGE',
 });
 
 /**
- * Where a station's label is anchored: just in front of its front-left floor
- * corner. The label is drawn flat on screen, ending at this point.
- * @param {number} i station index
- * @returns {number[]}
+ * Every flat label on the floor: the stations, the bins and bays, the names of the
+ * branches and loops, and the layer names.
+ * @type {{ id: string, text: string, anchor: 'start'|'middle'|'end', x: number, y: number, hot: string|null, layer: boolean }[]}
  */
-export function labelAnchor(i) {
-  const [x, y] = STATIONS[i].position;
-  return [x - LABEL_GAP, y + STATION_DEPTH + LABEL_GAP, 0];
-}
+export const LABELS = deepFreeze([
+  ...STATIONS.map((st, i) => label(st.id, stationLabel(i), st.id)),
+  ...Object.values(NODES)
+    .filter(({ kind }) => kind !== 'station')
+    .map(({ id, label: text }) => label(id, text, id)),
+  ...Object.entries(NAMES).map(([id, text]) => label(id, text)),
+  ...LAYER_PLATES.map((l) => label(`layer-${l.id}`, `CAPA ${l.index + 1} · ${l.title.toUpperCase()}`, null, true)),
+]);
+
+/** The screen position a label is anchored at. */
+export const labelPosition = ({ x, y }) => [x, y];
 
 /**
- * Where a bin's or a bay's label floats: centred over its top face. The label is
- * drawn flat on screen, centred on this point.
- * @param {string} id a bin or bay id from NODES
- * @returns {number[]}
+ * The screen box around a label's glyphs (viewBox units): the width is the character
+ * count at the monospace advance, the height runs from the cap line to the descender.
+ * @returns {{ x0: number, y0: number, x1: number, y1: number }}
  */
-export function nodeLabelAnchor(id) {
-  const { position, size } = NODES[id];
-  return [position[0] + size[0] / 2, position[1] + size[1] / 2, size[2] + NODE_LABEL_LIFT];
+export function labelBox(item) {
+  const [sx, sy] = labelPosition(item);
+  const width = item.text.length * CHAR_WIDTH;
+  const x0 = item.anchor === 'start' ? sx : item.anchor === 'end' ? sx - width : sx - width / 2;
+  return { x0, y0: sy - 0.8 * LABEL_SIZE, x1: x0 + width, y1: sy + 0.25 * LABEL_SIZE };
 }
-
-const ACCEPT_AT = (() => {
-  const next = STATIONS[STATIONS.findIndex((st) => st.id === 'intake') + 1];
-  return [(intake.position[0] + intake.size[0] + next.position[0]) / 2, LANE[0], STATION_HEIGHT + NODE_LABEL_LIFT];
-})();
-/** The ACCEPT exit of intake's sorting gate: its label floats over the belt that leaves the gate. */
-export const ACCEPT_LABEL = Object.freeze({ text: 'ACCEPT', anchor: Object.freeze(ACCEPT_AT) });
 
 const boxCorners = (position, size) =>
   [0, 1, 2, 3, 4, 5, 6, 7].map((c) => position.map((v, k) => v + ((c >> k) & 1) * size[k]));
@@ -271,44 +354,39 @@ export function isoFrame(points, pad = 24) {
 // The tallest part on a deck: an agent pod or the job package.
 const TALLEST = STATION_HEIGHT + Math.max(POD_SIZE[2], PACKAGE_SIZE);
 
-// A label `${n} · ${title}` drawn flat on screen and ending at its anchor: moving
-// by [-a, +a, 0] in iso units moves 2a·cos(30°) left on screen and not up or down.
-function labelPoints(i) {
-  const anchor = labelAnchor(i);
-  const width = (String(i + 1).length + 3 + STAGES[i].title.length) * CHAR_WIDTH;
-  const a = width / (2 * COS);
-  return [anchor, [anchor[0] - a, anchor[1] + a, 0], [anchor[0], anchor[1], LABEL_SIZE]];
-}
-
-// A label drawn flat on screen and centred on its anchor (textAnchor middle).
-function centredLabelPoints(text, [x, y, z]) {
-  const a = (text.length * CHAR_WIDTH) / 2 / (2 * COS);
-  return [
-    [x - a, y + a, z],
-    [x + a, y - a, z],
-    [x, y, z + LABEL_SIZE],
-  ];
-}
-
 /**
  * The viewBox that frames the whole plant: every station box up to the tallest
  * deck part, the bins and bays, the ground plate, every label, and a package at
  * every track point.
  */
-export const FLOOR_VIEWBOX = Object.freeze(
-  isoFrame([
+const labelPoints = LABELS.flatMap((item) => {
+  const { x0, y0, x1, y1 } = labelBox(item);
+  return [[x0, y0], [x1, y1]];
+});
+const labelFrame = (() => {
+  const xs = labelPoints.map((p) => p[0]);
+  const ys = labelPoints.map((p) => p[1]);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
+})();
+const plantFrame = isoFrame(
+  [
     ...STATIONS.flatMap(({ position, size }) => boxCorners(position, [size[0], size[1], TALLEST])),
     ...nodeBoxes.flatMap(({ position, size }) => boxCorners(position, size)),
-    ...boxCorners(PLATE.position, PLATE.size),
-    ...STATIONS.flatMap((_, i) => labelPoints(i)),
-    ...Object.values(NODES)
-      .filter(({ kind }) => kind !== 'station')
-      .flatMap(({ id, label }) => centredLabelPoints(label, nodeLabelAnchor(id))),
-    ...centredLabelPoints(ACCEPT_LABEL.text, ACCEPT_LABEL.anchor),
+    ...LAYER_PLATES.flatMap(({ position, size }) => boxCorners([position[0], position[1], position[2] - PLATE_THICKNESS], [size[0], size[1], PLATE_THICKNESS])),
     ...[...trackPoints, ...Object.values(NODES).map(({ point }) => point)].flatMap((p) =>
       boxCorners(p, [PACKAGE_SIZE, PACKAGE_SIZE, PACKAGE_SIZE]),
     ),
-  ]),
+  ],
+  24,
+);
+export const FLOOR_VIEWBOX = Object.freeze(
+  (() => {
+    const x = Math.min(plantFrame.x, labelFrame.x0 - 8);
+    const y = Math.min(plantFrame.y, labelFrame.y0 - 8);
+    const x1 = Math.max(plantFrame.x + plantFrame.width, labelFrame.x1 + 8);
+    const y1 = Math.max(plantFrame.y + plantFrame.height, labelFrame.y1 + 8);
+    return { x, y, width: x1 - x, height: y1 - y };
+  })(),
 );
 
 /**
@@ -323,15 +401,15 @@ export function stationOutline(i) {
   if (!Number.isInteger(i) || i < 0 || i >= STATIONS.length) {
     throw new RangeError(`station index must be an integer from 0 to ${STATIONS.length - 1}, got ${String(i)}`);
   }
-  const [x, y] = STATIONS[i].position;
+  const [x, y, z] = STATIONS[i].position;
   const [w, d] = STATIONS[i].size;
-  const H = TALLEST;
+  const H = z + TALLEST;
   return [
     [x, y, H],
     [x + w, y, H],
-    [x + w, y, 0],
-    [x + w, y + d, 0],
-    [x, y + d, 0],
+    [x + w, y, z],
+    [x + w, y + d, z],
+    [x, y + d, z],
     [x, y + d, H],
   ].map(iso);
 }
@@ -343,8 +421,9 @@ function stationIndex(stageIndex) {
 }
 
 /**
- * Where the job package is on its way from the previous station (progress 0)
- * to the current one (progress 1), as a station position (back-top-left corner).
+ * Where the job package is on its way from the previous station (progress 0) to
+ * the current one (progress 1): it rides the belt between them, turns included. The
+ * result is a station position (back-top-left corner), like STATIONS[i].position.
  * @param {number} stageIndex
  * @param {number} progress 0..1, clamped; non-finite means 1 (arrived)
  * @returns {number[]}
@@ -352,9 +431,14 @@ function stationIndex(stageIndex) {
 export function packagePosition(stageIndex, progress) {
   const i = stationIndex(stageIndex);
   const p = Number.isFinite(progress) ? clamp(progress, 0, 1) : 1;
-  const from = STATIONS[Math.max(i - 1, 0)].position;
-  const to = STATIONS[i].position;
-  return from.map((v, k) => v + (to[k] - v) * p);
+  if (i === 0) return [...STATIONS[0].position];
+  const { points } = TRACKS.find((t) => t.kind === 'belt' && t.from === STATIONS[i - 1].id && t.to === STATIONS[i].id);
+  const lengths = points.slice(1).map((q, k) => Math.hypot(...q.map((v, c) => v - points[k][c])));
+  let left = p * lengths.reduce((a, b) => a + b, 0);
+  let k = 0;
+  while (k < lengths.length - 1 && left > lengths[k]) left -= lengths[k++];
+  const f = lengths[k] === 0 ? 1 : Math.min(left / lengths[k], 1);
+  return points[k].map((v, c) => v + (points[k + 1][c] - v) * f - PACKAGE_OFFSET[c]);
 }
 
 /**
