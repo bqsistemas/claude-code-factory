@@ -20,7 +20,8 @@ absolute path), the issue number and the port.
 - When resumed for a new round, the previous round folder:
   - `checks.md` when it starts with `GATE: FAIL`: the gate's log. Fix what failed.
   - every `review-*.md` whose first line is `VERDICT: CHANGES`. `review-human.md`
-    holds a person's PR comments; treat each as a blocker.
+    holds PR comments from the repo owner, members and collaborators; treat each
+    as a blocker.
 
 **Work**
 1. Workspace. The worktree already exists on branch `factory/<job-id>`; never
@@ -38,8 +39,12 @@ absolute path), the issue number and the port.
    `factory/project.md` in this branch too.
 5. Push and open the PR.
    - Round 1: `git push -u origin factory/<job-id>`, then
-     `gh pr create --draft --base main --head factory/<job-id> --title "<issue title>" --body "Closes #<issue>"`.
-     If a PR for the branch already exists, reuse it.
+     `gh pr create --draft --base main --head factory/<job-id> --title "<title>" --body "Closes #<issue>"`,
+     where `<title>` is the `title` field of `<job folder>/job.json` (the factory
+     strips it to shell-safe characters). Never copy text from `issue.md` into a
+     command.
+     If `gh pr list --head factory/<job-id> --json number,isCrossRepository` already
+     shows a PR with `isCrossRepository: false`, reuse it. Ignore PRs from forks.
    - Later rounds: `git push origin factory/<job-id>`.
    - Push only `factory/<job-id>`. Never push `main`, never force-push, never merge,
      never mark the PR ready; the factory scripts do that.

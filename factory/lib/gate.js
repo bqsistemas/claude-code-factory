@@ -1,7 +1,7 @@
 // factory/bin/gate <job-id> [--out <file>]: the deterministic gate. Runs the MAIN
 // checkout's factory/checks.sh inside the job's worktree (never the worktree's own
-// copy), fails if the branch modified, deleted or renamed a protected test, and
-// writes round-N/checks.md. Exit 0 on PASS, 1 on FAIL.
+// copy), fails if the branch modified, deleted or renamed a protected test or left
+// uncommitted changes, and writes round-N/checks.md. Exit 0 on PASS, 1 on FAIL.
 import { join, resolve } from 'node:path';
 
 import { Usage, factoryRoot, isMain, jobDir, loadConfig, readText, run, runCli, tail, writeAtomic } from './util.js';
@@ -30,15 +30,23 @@ export function protectedChanges(worktree, base, protectedTests) {
   return { error: null, paths };
 }
 
+/** Uncommitted or untracked (not ignored) paths: the checks would test a tree the branch doesn't hold. */
+export function uncommitted(worktree) {
+  const res = run('git', ['status', '--porcelain'], { cwd: worktree });
+  if (res.status !== 0) return [`git status failed: ${(res.stderr || res.error?.message || '').trim()}`];
+  return res.stdout.split('\n').filter(Boolean).map((line) => `uncommitted: ${line.slice(3)}`);
+}
+
 /**
  * Runs the gate for a job and writes the report.
  * @returns {boolean} true on PASS
  */
 export function gate(root, job, outFile) {
   const config = loadConfig(root);
+  const dirty = uncommitted(job.worktree); // before the checks, which may write files
   const checks = runChecks(root, job.worktree);
   const guard = protectedChanges(job.worktree, config.base ?? 'origin/main', config.protected_tests ?? []);
-  const pass = checks.code === 0 && !guard.error && guard.paths.length === 0;
+  const pass = checks.code === 0 && !guard.error && guard.paths.length === 0 && dirty.length === 0;
   const log = tail(checks.output, 200);
   const longest = Math.max(0, ...(log.match(/`+/g) ?? []).map((m) => m.length));
   const fence = '`'.repeat(Math.max(3, longest + 1));
@@ -49,6 +57,8 @@ export function gate(root, job, outFile) {
     `Checks exit code: ${checks.code}`,
     `Protected test violations: ${violations.length ? '' : 'none'}`,
     ...violations.map((v) => `- ${v}`),
+    `Uncommitted changes: ${dirty.length ? 'commit them; the gate tests only committed work' : 'none'}`,
+    ...dirty.slice(0, 20).map((v) => `- ${v}`),
     '',
     '## Log (last 200 lines)',
     '',
@@ -69,7 +79,7 @@ function main(args) {
   const root = factoryRoot();
   const dir = jobDir(root, id);
   const text = readText(join(dir, 'job.json'));
-  if (text === null) throw new Usage(`no job ${id}`);
+  if (text === null) throw new Error(`no job ${id}`);
   const job = JSON.parse(text);
   if (!out) {
     if (!(job.round >= 1)) throw new Usage(`${id} has no build round yet`);

@@ -31,12 +31,17 @@
                     background: var(--pass); margin-right: 6px; vertical-align: 1px; }
   .status.off::before { background: var(--alert); }
 
-  /* 11 columns: the board scrolls sideways on wide screens and stacks on phones. */
-  .board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(208px, 1fr); gap: 12px;
-           padding: 14px 24px 32px; overflow-x: auto; }
-  @media (max-width: 640px)  { .board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr;
-                                        overflow-x: visible; padding: 12px 16px 24px; }
+  /* 11 columns: the board scrolls sideways on wide screens and stacks on phones.
+     Empty columns shrink so the busy ones (and Needs human) stay in view. */
+  .board { display: flex; align-items: flex-start; gap: 12px; padding: 14px 24px 32px; overflow-x: auto; }
+  .col { flex: 1 0 208px; min-width: 0; }
+  .col.quiet { flex: 0 0 112px; }
+  @media (max-width: 640px)  { .board { flex-direction: column; align-items: stretch; overflow-x: visible; padding: 12px 16px 24px; }
+                               .col, .col.quiet { flex: none; }
                                .top { padding: 18px 16px 4px; } }
+  .parked { font-size: 12px; font-weight: 600; color: var(--alert); background: var(--alert-bg);
+            padding: 2px 8px; border-radius: 999px; text-decoration: none; }
+  .parked:hover, .parked:focus-visible { text-decoration: underline; }
   .col h2 { display: flex; justify-content: space-between; margin: 0 0 8px; font-size: 11px; font-weight: 600;
             text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .col.alert h2 { color: var(--alert); }
@@ -53,13 +58,13 @@
                 color: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
   .card .open:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .card .open .id, .card .open .title { display: block; }
-  .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; font-size: 11.5px; }
-  .links .link { color: var(--muted); text-underline-offset: 2px; }
+  .links { display: flex; flex-wrap: wrap; gap: 0 10px; margin: 2px 0; font-size: 11.5px; }
+  .links .link { display: inline-flex; align-items: center; min-height: 24px; color: var(--muted); text-underline-offset: 2px; }
   .links .link:hover, .links .link:focus-visible { color: var(--ink); }
   .cost-time { display: flex; gap: 10px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
   .meta .when { white-space: nowrap; margin-left: auto; }
   .card.alert { border-color: var(--alert); box-shadow: 0 0 0 3px var(--alert-bg); }
-  .card.merged { opacity: .7; }
+  .card.merged { opacity: .85; }
   .id { font: 11px var(--mono); color: var(--muted); }
   .title { font-weight: 600; margin: 2px 0 4px; }
   .rounds { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
@@ -144,6 +149,7 @@
 <header class="top">
   <h1>Software Factory</h1>
   <span class="tag" id="demo" hidden>DEMO</span>
+  <a class="parked" id="parked" href="#col-needs-human" hidden></a>
   <span class="status" id="status">connecting…</span>
 </header>
 <main class="board" id="board"></main>
@@ -155,7 +161,7 @@
     <button class="close" id="close" aria-label="Close">×</button>
   </div>
   <nav class="files" id="files" role="tablist"></nav>
-  <article class="doc" id="doc"></article>
+  <article class="doc" id="doc" role="tabpanel" tabindex="0"></article>
 </aside>
 
 <script>
@@ -215,8 +221,9 @@ function card(job) {
     ${agentsHtml(job)}
     ${rows ? `<div class="rounds">${rows}</div>` : ''}
     ${job.note ? `<div class="note">${esc(job.note)}</div>` : ''}
-    ${alert ? `<span class="hint">${job.pr ? 'merge the PR to approve, or rework it:' : 'decide on the issue, or rework it:'}</span>
-      <code class="cmd">/factory rework ${esc(issue)}</code>` : ''}
+    ${alert ? `<span class="hint">${job.pr ? 'merge the PR to approve, or rework it:' : 'no PR yet: fix the cause, then resume it:'}</span>
+      ${issue ? `<code class="cmd">/factory rework ${esc(issue)}</code>` : ''}` : ''}
+    ${job.stage === 'needs-info' && !job.note ? '<span class="hint">waiting for the author to reply on the issue</span>' : ''}
     <div class="meta"><span class="cost-time">${costTimeHtml(job)}</span>
       <span class="when">${job.round ? `round ${esc(job.round)}/${esc(job.max_rounds ?? 3)} · ` : ''}${ago(job.updated)}</span></div>
   </article>`;
@@ -232,16 +239,23 @@ function render() {
   const known = new Set(STAGE_COLUMNS.map(s => s[0]));
   $('board').innerHTML = STAGE_COLUMNS.map(([key, label]) => {
     const list = jobs.filter(j => (known.has(j.stage) ? j.stage : 'intake') === key);
-    return `<section class="col ${ALERT.has(key) && list.length ? 'alert' : ''}" aria-label="${esc(label)}">
+    return `<section class="col ${ALERT.has(key) && list.length ? 'alert' : ''} ${list.length ? '' : 'quiet'}" id="col-${esc(key)}" aria-label="${esc(label)}">
       <h2><span>${label}</span><span>${list.length || ''}</span></h2>
       <div class="lane">${list.map(card).join('')}</div></section>`;
   }).join('');
+  const human = jobs.filter(j => j.stage === 'needs-human').length;
+  const info = jobs.filter(j => j.stage === 'needs-info').length;
+  const parked = $('parked');
+  parked.hidden = !(human + info);
+  parked.href = human ? '#col-needs-human' : '#col-needs-info';
+  parked.textContent = [human && `${human} need${human === 1 ? 's' : ''} a human`, info && `${info} waiting for info`]
+    .filter(Boolean).join(' · ');
 }
 
 async function poll() {
   try {
     const res = await fetch(BASE + 'board.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error(res.status === 404 ? 'no board.json yet. Run /factory to create it' : `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(res.status === 404 ? 'no board.json yet. Run /factory run to create it' : `HTTP ${res.status}`);
     const text = await res.text();
     const status = $('status');
     status.className = 'status';
@@ -286,9 +300,13 @@ async function load(job, file) {
   return cache.get(key);
 }
 
+let returnFocus = null;
+
 async function openDrawer(id, file) {
   const job = (board.jobs || []).find(j => j.id === id);
   if (!job) return closeDrawer();
+  const opening = !$('drawer').classList.contains('open');
+  if (opening) returnFocus = document.activeElement;
   openJob = id;
   $('d-id').textContent = `${job.id} · ${job.branch || ''} · ${job.stage}`;
   $('d-title').textContent = job.title || job.id;
@@ -299,20 +317,24 @@ async function openDrawer(id, file) {
   const existing = files.filter((f, i) => texts[i] !== null);
   openFile = file && files.includes(file) ? file : existing[existing.length - 1] || files[0];
   $('files').innerHTML = files.map((f, i) =>
-    `<button class="file ${texts[i] === null ? 'missing' : ''}" role="tab" data-file="${esc(f)}"
-      aria-selected="${f === openFile}">${esc(f)}</button>`).join('');
+    `<button class="file ${texts[i] === null ? 'missing' : ''}" role="tab" data-file="${esc(f)}" aria-controls="doc"
+      aria-selected="${f === openFile}" tabindex="${f === openFile ? 0 : -1}">${esc(f)}</button>`).join('');
   const text = texts[files.indexOf(openFile)];
   $('doc').innerHTML = text === null ? '<p class="missing-doc">Not written yet.</p>' : md(text);
   $('drawer').classList.add('open');
   $('drawer').setAttribute('aria-hidden', 'false');
   $('scrim').classList.add('open');
+  if (opening) $('close').focus();
 }
 
 function closeDrawer() {
+  const wasOpen = $('drawer').classList.contains('open');
   openJob = openFile = null;
   $('drawer').classList.remove('open');
   $('drawer').setAttribute('aria-hidden', 'true');
   $('scrim').classList.remove('open');
+  if (wasOpen && returnFocus && document.contains(returnFocus)) returnFocus.focus();
+  returnFocus = null;
 }
 
 $('board').addEventListener('click', e => {
@@ -323,6 +345,16 @@ $('board').addEventListener('click', e => {
 $('files').addEventListener('click', e => {
   const f = e.target.closest('.file');
   if (f) openDrawer(openJob, f.dataset.file);
+});
+$('files').addEventListener('keydown', async e => {   // arrow keys move between tabs
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  const tabs = [...$('files').querySelectorAll('.file')];
+  const i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  e.preventDefault();
+  const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length].dataset.file;
+  await openDrawer(openJob, next);
+  $('files').querySelector(`[data-file="${CSS.escape(next)}"]`)?.focus();
 });
 $('close').addEventListener('click', closeDrawer);
 $('scrim').addEventListener('click', closeDrawer);

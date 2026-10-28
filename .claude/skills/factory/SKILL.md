@@ -73,9 +73,13 @@ factory/
 - `/factory <feature>`: write the request to a temp file, run
   `gh issue create --title "<short title>" --body-file <file> --label factory`, then
   run that issue as `/factory issue <n>`.
-- `/factory rework <n>`: the job for issue `<n>` is in `needs-human` with a PR. Run
-  `factory/bin/job <id> to build` (it quotes the PR's review comments into
-  `round-N/review-human.md`), then continue the job at **build**.
+- `/factory rework <n>`: the job for issue `<n>` is in `needs-human`.
+  - With a PR: run `factory/bin/job <id> to build`. It quotes the PR's review
+    comments from the repo owner, members and collaborators into
+    `round-N/review-human.md`. Then continue the job at **build**.
+  - Without a PR (it stopped at intake, spec or build): once the human has fixed the
+    cause, run `factory/bin/job <id> to <parked_from>` (`parked_from` is in `job.json`;
+    a refusal names it), then continue the job at that stage.
 
 There is no approve command: a human approves by merging the PR on GitHub, and the
 next `/factory run` moves the job to `merged`.

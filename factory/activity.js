@@ -90,12 +90,13 @@ export function agentsHtml(job) {
 export function roundChipsHtml(round) {
   const { gate, reviews } = isObject(round) ? round : {};
   const g = GATE_STATES.has(gate) ? gate : 'pending';
-  const chips = [`<span class="chip gate ${g}" title="gate: ${g}">gate</span>`];
+  const chips = [`<span class="chip gate ${g}" role="img" aria-label="gate: ${g}" title="gate: ${g}">gate</span>`];
   if (isObject(reviews)) {
     const keys = [...LENSES.filter((k) => Object.hasOwn(reviews, k)), ...Object.keys(reviews).filter((k) => !LENSES.includes(k))];
     for (const key of keys) {
       const state = REVIEW_STATES.has(reviews[key]) ? reviews[key] : '';
-      chips.push(`<span class="chip${state ? ` ${state}` : ''}" title="${esc(key)}: ${esc(reviews[key])}">${esc(key)}</span>`);
+      const label = `${esc(key)}: ${esc(state || 'unknown')}`;
+      chips.push(`<span class="chip${state ? ` ${state}` : ''}" role="img" aria-label="${label}" title="${label}">${esc(key)}</span>`);
     }
   }
   return chips.join('');

@@ -3,7 +3,7 @@
 // The CLI only prints; it writes nothing.
 import { join } from 'node:path';
 
-import { parseIntake } from './job.js';
+import { parseIntake } from './intake.js';
 import { Refused, Usage, factoryRoot, isMain, jobDir, loadConfig, readText, runCli } from './util.js';
 
 const RISKS = ['low', 'medium', 'high'];

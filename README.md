@@ -38,8 +38,11 @@ Then, in Claude Code:
 
 There is no approve command. When a job needs you, its PR is ready for review with
 the approver's reasoning as a comment: merge the PR to approve it, or leave review
-comments and run `/factory rework <issue>`. A NEEDS-INFO issue waits for its author
-to reply on the issue; the next `/factory run` picks the reply up.
+comments and run `/factory rework <issue>`. Only comments from the repo owner, members
+and collaborators reach the builder. A job that stopped before it had a PR (for
+example, a blocked spec) is resumed the same way, from the stage where it stopped. A
+NEEDS-INFO issue waits for its author to reply on the issue; the next `/factory run`
+picks the reply up. A rejected issue should be closed.
 
 `/factory run` ends with `factory/bin/job summary`: each job's issue, stage, cost and
 time, and a total.
