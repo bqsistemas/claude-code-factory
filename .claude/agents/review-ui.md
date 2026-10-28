@@ -12,10 +12,11 @@ only in your reply counts as a failed review.
 
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
-- The change: `git diff main...factory/<job-id>`, and the full files in
-  `.worktrees/<job-id>` for context, especially existing styles and components.
-- From round 2 on: your own review in the previous round folder. Check that each
-  blocker you raised was fixed.
+- `<round folder>/checks.md`: the gate already ran the repo's checks for this round.
+- The change: `git diff origin/main...factory/<job-id>`, and the full files in the
+  worktree from your prompt for context, especially existing styles and components.
+- From round 2 on: your own review in an earlier round folder, if there is one.
+  Check that each blocker you raised was fixed.
 
 Read-only. Don't edit code, commit, or switch branches.
 
@@ -55,4 +56,5 @@ block. With no findings, write `No findings.` and PASS.
    `<round folder>/review-ui.md`. Do not paste the review into your reply instead.
 2. Run `head -1 <round folder>/review-ui.md`. It must print `VERDICT: PASS` or
    `VERDICT: CHANGES`. If the file is missing or the line is wrong, write it again.
-3. Reply with one line only: the verdict and the file path.
+3. Reply to the orchestrator with exactly one line: the first line of
+   `review-ui.md`.

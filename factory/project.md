@@ -34,11 +34,16 @@ merge changes the stack or the test command.
 - iso-glow style comes from the `/iso-glow` skill (`~/.claude/skills/iso-glow/`).
   The `iso` kernel is adapted from iso-figure (MIT), credited in `scene.js`; `game.html`
   carries a "Made with ISO-GLOW" credit link. Human-approved in job 007.
-  `engine.js` must match `.claude/agents/` names and models; a test checks it.
+  `engine.js` must match `.claude/agents/` names and models, all but `intake` (the
+  game doesn't show it yet); a test checks it.
 - `factory/avatars.js`: the octopus agent characters, shared by the dashboard and the
   game bundle. Rebuild `public/game.js` whenever it changes.
 - `FactoryLoop.jsx` copies layout numbers from `styles.css` (breakpoint, panel width,
   bottom-panel height, HUD height) to fit the iso floor; change both together.
+- `factory/config.json`, `factory/checks.sh`, `factory/bin/*` and `factory/lib/*.js`:
+  the v2 factory spine (Node 20 ESM, no dependencies). `checks.sh` is what the gate
+  runs (`npm test`). The spine tests listed in `config.json` `protected_tests` must
+  not be edited by a job; the gate fails the round if they are.
 - `docs/juego-factory.md`: Spanish guide to the game.
 - `test/`: one `<module>.test.js` per module; tests start the app on port 0.
 

@@ -18,6 +18,14 @@ y de los archivos de `.claude/agents/`. Un test (`test/engine.test.js`) compara 
 y modelos del juego con esos archivos, así que el juego no puede quedar desactualizado sin
 que falle la suite.
 
+> **Nota sobre el factory v2.** El factory ahora toma los issues de GitHub con la
+> etiqueta `factory` y suma un agente nuevo en la puerta: `intake` (modelo `fable`),
+> que acepta, pide más información o rechaza cada issue antes de la especificación.
+> Después vienen el gate de checks, los revisores según el riesgo y el merge del PR.
+> El juego todavía muestra el loop v1 de siete etapas; una actualización posterior lo
+> va a poner al día. Por eso el test de `engine.js` compara los agentes del juego con
+> `.claude/agents/` sin contar `intake`.
+
 ## Cómo jugar
 
 1. Abre `/game` y presiona **Empezar**.

@@ -31,21 +31,33 @@
                     background: var(--pass); margin-right: 6px; vertical-align: 1px; }
   .status.off::before { background: var(--alert); }
 
-  .board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 14px 24px 32px; }
-  @media (max-width: 1100px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-  @media (max-width: 640px)  { .board { grid-template-columns: 1fr; padding: 12px 16px 24px; } .top { padding: 18px 16px 4px; } }
+  /* 11 columns: the board scrolls sideways on wide screens and stacks on phones. */
+  .board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(208px, 1fr); gap: 12px;
+           padding: 14px 24px 32px; overflow-x: auto; }
+  @media (max-width: 640px)  { .board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr;
+                                        overflow-x: visible; padding: 12px 16px 24px; }
+                               .top { padding: 18px 16px 4px; } }
   .col h2 { display: flex; justify-content: space-between; margin: 0 0 8px; font-size: 11px; font-weight: 600;
             text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   .col.alert h2 { color: var(--alert); }
+  .col.quiet .lane { min-height: 40px; }
   .lane { display: flex; flex-direction: column; gap: 8px; min-height: 64px; padding: 6px;
           border-radius: 12px; border: 1px dashed var(--line); }
   .col.alert .lane { border-color: var(--alert); background: var(--alert-bg); }
 
-  .card { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  .card { display: block; width: 100%; text-align: left; color: inherit; cursor: pointer;
           background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
           transition: border-color .15s, transform .15s; }
   .card:hover { border-color: var(--muted); transform: translateY(-1px); }
-  .card:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .card .open { display: block; width: 100%; padding: 0; margin: 0; border: 0; background: none; font: inherit;
+                color: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
+  .card .open:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .card .open .id, .card .open .title { display: block; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 2px; font-size: 11.5px; }
+  .links .link { color: var(--muted); text-underline-offset: 2px; }
+  .links .link:hover, .links .link:focus-visible { color: var(--ink); }
+  .cost-time { display: flex; gap: 10px; font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+  .meta .when { white-space: nowrap; margin-left: auto; }
   .card.alert { border-color: var(--alert); box-shadow: 0 0 0 3px var(--alert-bg); }
   .card.merged { opacity: .7; }
   .id { font: 11px var(--mono); color: var(--muted); }
@@ -57,13 +69,16 @@
           background: var(--chip-bg); color: var(--pending); border: 1px dashed var(--pending); }
   .chip.PASS { background: var(--pass-bg); color: var(--pass); border: 1px solid transparent; }
   .chip.CHANGES { background: var(--changes-bg); color: var(--changes); border: 1px solid transparent; }
+  .chip.FAIL { background: var(--alert-bg); color: var(--alert); border: 1px solid transparent; }
+  .chip.gate { border-radius: 4px; font-family: var(--mono); letter-spacing: .02em; }
   .chip.pending { animation: breathe 1.6s ease-in-out infinite; }
   @keyframes breathe { 50% { opacity: .4; } }
   .note { margin-top: 8px; font-size: 12px; color: var(--muted); }
   .card.alert .note { color: var(--alert); }
   .cmd { display: inline-block; margin-top: 6px; font: 11px var(--mono); padding: 2px 6px; border-radius: 4px;
          background: var(--alert-bg); color: var(--alert); }
-  .meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .hint { display: block; margin-top: 6px; font-size: 11.5px; color: var(--alert); }
+  .meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-top: 8px; font-size: 11px; color: var(--muted); }
   .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 64px 16px; }
   code { font: 12px var(--mono); background: var(--chip-bg); padding: 1px 5px; border-radius: 4px; }
   a { color: inherit; }
@@ -96,6 +111,7 @@
   .verdict.good { background: var(--pass-bg); color: var(--pass); }
   .verdict.warn { background: var(--changes-bg); color: var(--changes); }
   .verdict.bad  { background: var(--alert-bg); color: var(--alert); }
+  .drawer-links { margin-top: 4px; }
   .missing-doc { color: var(--muted); font-style: italic; }
 
   .agents { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
@@ -135,7 +151,7 @@
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer" aria-hidden="true">
   <div class="drawer-head">
-    <div><div class="id" id="d-id"></div><div class="title" id="d-title"></div></div>
+    <div><div class="id" id="d-id"></div><div class="title" id="d-title"></div><div class="drawer-links" id="d-links"></div></div>
     <button class="close" id="close" aria-label="Close">×</button>
   </div>
   <nav class="files" id="files" role="tablist"></nav>
@@ -151,15 +167,15 @@
   }
 </script>
 <script type="module">
-import { activeAgents, agentsHtml } from './activity.js';
+import {
+  STAGE_COLUMNS, activeAgents, agentsHtml, costTimeHtml, linksHtml, roundChipsHtml,
+} from './activity.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const BASE = DEMO ? 'demo/' : '';
-const STAGES = [
-  ['spec', 'Spec'], ['build', 'Build'], ['review', 'Review'],
-  ['approval', 'Approval'], ['needs-human', 'Needs human'], ['merged', 'Merged'],
-];
 const REVIEWERS = ['security', 'ux', 'ui', 'code'];
+const ALERT = new Set(['needs-human', 'needs-info']);
+const DONE = new Set(['merged', 'rejected']);
 
 let board = { jobs: [] }, lastText = '', openJob = null, openFile = null;
 const cache = new Map();
@@ -176,46 +192,47 @@ function ago(iso) {
   return `${Math.round(s / 86400)}d ago`;
 }
 
+// One row per round: history first, then the current round once it has a gate.
 function roundsOf(job) {
-  const rows = [...(job.history || [])];
-  if (job.reviews && Object.keys(job.reviews).length) rows.push(job.reviews);
+  const rows = (Array.isArray(job.history) ? job.history : []).filter(r => r && typeof r === 'object');
+  const reviews = job.reviews && typeof job.reviews === 'object' ? job.reviews : {};
+  if (job.round >= 1 && (job.gate || Object.keys(reviews).length)) rows.push({ gate: job.gate, reviews });
   return rows;
-}
-
-function chips(reviews) {
-  const keys = [...REVIEWERS, ...Object.keys(reviews).filter(k => !REVIEWERS.includes(k))];
-  return keys.filter(k => k in reviews)
-    .map(k => `<span class="chip ${esc(reviews[k])}" title="${esc(k)}: ${esc(reviews[k])}">${esc(k)}</span>`).join('');
 }
 
 function card(job) {
   const alert = job.stage === 'needs-human';
   const running = activeAgents(job).length > 0;
   const rows = roundsOf(job).map((r, i) =>
-    `<div class="round"><span class="n">R${i + 1}</span>${chips(r)}</div>`).join('');
-  return `<button class="card ${alert ? 'alert' : ''} ${job.stage === 'merged' ? 'merged' : ''} ${running ? 'running' : ''}" data-id="${esc(job.id)}">
-    <div class="id">${esc(job.id)}</div>
-    <div class="title">${esc(job.title || job.id)}</div>
+    `<div class="round"><span class="n">R${i + 1}</span>${roundChipsHtml(r)}</div>`).join('');
+  const issue = Number.isInteger(job.issue) && job.issue > 0 ? job.issue : '';
+  return `<article class="card ${alert ? 'alert' : ''} ${DONE.has(job.stage) ? 'merged' : ''} ${running ? 'running' : ''}" data-id="${esc(job.id)}">
+    <button class="open" data-id="${esc(job.id)}" aria-label="Open ${esc(job.id)}">
+      <span class="id">${esc(job.id)}</span>
+      <span class="title">${esc(job.title || job.id)}</span>
+    </button>
+    ${linksHtml(job, board.repo)}
     ${agentsHtml(job)}
     ${rows ? `<div class="rounds">${rows}</div>` : ''}
     ${job.note ? `<div class="note">${esc(job.note)}</div>` : ''}
-    ${alert ? `<code class="cmd">/factory approve ${esc(job.id)}</code>` : ''}
-    <div class="meta"><span>${job.round ? `round ${job.round}/${job.max_round ?? 2}` : esc(job.branch || '')}</span>
-      <span>${ago(job.updated)}</span></div>
-  </button>`;
+    ${alert ? `<span class="hint">${job.pr ? 'merge the PR to approve, or rework it:' : 'decide on the issue, or rework it:'}</span>
+      <code class="cmd">/factory rework ${esc(issue)}</code>` : ''}
+    <div class="meta"><span class="cost-time">${costTimeHtml(job)}</span>
+      <span class="when">${job.round ? `round ${esc(job.round)}/${esc(job.max_rounds ?? 3)} · ` : ''}${ago(job.updated)}</span></div>
+  </article>`;
 }
 
 function render() {
   const jobs = board.jobs || [];
   if (!jobs.length) {
-    $('board').innerHTML = `<div class="empty">No jobs yet. Run <code>/factory &lt;feature&gt;</code> in Claude Code.
+    $('board').innerHTML = `<div class="empty">No jobs yet. Label a GitHub issue <code>factory</code> and run <code>/factory run</code> in Claude Code.
       ${DEMO ? '' : '<br><br>Or open the <a href="?demo">demo board</a>.'}</div>`;
     return;
   }
-  const known = new Set(STAGES.map(s => s[0]));
-  $('board').innerHTML = STAGES.map(([key, label]) => {
-    const list = jobs.filter(j => (known.has(j.stage) ? j.stage : 'spec') === key);
-    return `<section class="col ${key === 'needs-human' && list.length ? 'alert' : ''}">
+  const known = new Set(STAGE_COLUMNS.map(s => s[0]));
+  $('board').innerHTML = STAGE_COLUMNS.map(([key, label]) => {
+    const list = jobs.filter(j => (known.has(j.stage) ? j.stage : 'intake') === key);
+    return `<section class="col ${ALERT.has(key) && list.length ? 'alert' : ''}" aria-label="${esc(label)}">
       <h2><span>${label}</span><span>${list.length || ''}</span></h2>
       <div class="lane">${list.map(card).join('')}</div></section>`;
   }).join('');
@@ -249,12 +266,14 @@ async function poll() {
 // --- drawer -----------------------------------------------------------------
 
 function filesOf(job) {
-  const files = ['feature.md', 'spec.md', 'build.md'];
+  const files = ['issue.md', 'intake.md', 'spec.md', 'build.md'];
   roundsOf(job).forEach((r, i) => {
-    const keys = [...REVIEWERS, ...Object.keys(r).filter(k => !REVIEWERS.includes(k))];
+    files.push(`round-${i + 1}/checks.md`);
+    const reviews = r.reviews && typeof r.reviews === 'object' ? r.reviews : {};
+    const keys = [...REVIEWERS.filter(k => k in reviews), ...Object.keys(reviews).filter(k => !REVIEWERS.includes(k))];
     keys.forEach(k => files.push(`round-${i + 1}/review-${k}.md`));
   });
-  files.push('decision.md');
+  files.push('decision.md', 'merge-checks.md');
   return files;
 }
 
@@ -273,6 +292,7 @@ async function openDrawer(id, file) {
   openJob = id;
   $('d-id').textContent = `${job.id} · ${job.branch || ''} · ${job.stage}`;
   $('d-title').textContent = job.title || job.id;
+  $('d-links').innerHTML = linksHtml(job, board.repo);
   const files = filesOf(job);
   const texts = await Promise.all(files.map(f => load(job, f)));
   if (openJob !== id) return;
@@ -296,6 +316,7 @@ function closeDrawer() {
 }
 
 $('board').addEventListener('click', e => {
+  if (e.target.closest('a')) return;   // issue and PR links open GitHub
   const c = e.target.closest('.card');
   if (c) openDrawer(c.dataset.id);
 });
@@ -309,7 +330,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(
 
 // --- tiny markdown renderer (headings, lists, tables, code, quotes) ---------
 
-const TONE = { PASS: 'good', APPROVE: 'good', READY: 'good', CHANGES: 'warn', ESCALATE: 'bad', BLOCKED: 'bad' };
+const TONE = {
+  PASS: 'good', APPROVE: 'good', READY: 'good', ACCEPT: 'good',
+  CHANGES: 'warn', 'NEEDS-INFO': 'warn', ESCALATE: 'bad', BLOCKED: 'bad', FAIL: 'bad', REJECT: 'bad',
+};
 
 function inline(s) {
   return esc(s)
@@ -333,7 +357,7 @@ function md(src) {
   const LIST = /^\s*([-*]|\d+\.)\s+/;
   const START = /^(```|#{1,4}\s|\s*\||>|-{3,}\s*$)/;
   let i = 0;
-  const first = (lines[0] || '').match(/^(?:(VERDICT|STATUS):\s*)?(PASS|CHANGES|APPROVE|ESCALATE|READY|BLOCKED)\b/);
+  const first = (lines[0] || '').match(/^(?:(VERDICT|STATUS|GATE):\s*)?(PASS|FAIL|CHANGES|APPROVE|ESCALATE|READY|BLOCKED|ACCEPT|NEEDS-INFO|REJECT)(?![\w-])/);
   if (first) { out.push(`<span class="verdict ${TONE[first[2]]}">${esc(lines[0])}</span>`); i = 1; }
   while (i < lines.length) {
     const l = lines[i];
