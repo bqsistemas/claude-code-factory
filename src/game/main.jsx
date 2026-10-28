@@ -16,8 +16,9 @@ import {
   maxScore,
 } from './engine.js';
 import { phraseFor } from './melody.js';
+import { SCENARIOS, TOUR_STEPS } from './scenarios.js';
 import { schedulePhrase } from './sound.js';
-import { TOUR_STEP_MS, createTour, nextStep, selectStep, togglePlaying } from './tour.js';
+import { TOUR_STEP_MS, createTour, nextStep, selectStep, stepForStation, togglePlaying } from './tour.js';
 
 // At most 5 seconds (WCAG 2.2.2): the quiz Player has no pause control.
 const DURATION = 120;
@@ -30,7 +31,7 @@ const TOUR_FRAMES = (TOUR_STEP_MS * 30) / 1000;
 // tour for good. Only pause() (Pausar, a station select) stops this one.
 const TOUR_PLAYER_FRAMES = TOUR_FRAMES + 30;
 // After a station is selected the paused tour shows this frame: the station is
-// fully lit (frames 0-15) and the belt pulse has arrived (frame 75).
+// fully lit (frames 0-15) and the package has arrived on it (frame 75).
 const LIT_FRAME = 75;
 // Melody gain: quiet, well under sound.js's 0.2 cap.
 const VOLUME = 0.06;
@@ -119,9 +120,9 @@ function Intro({ onStart, onTour }) {
     <section className="game__panel" aria-labelledby="game-title">
       <h1 id="game-title" className="game__title">El juego del factory</h1>
       <p className="game__text">
-        Recorre las {STAGES.length} etapas del software factory de este repo: el orquestador, los
-        siete agentes, sus archivos, la ronda de revisiones y la decisión final. Cada etapa
-        tiene una animación y una pregunta. Cada respuesta correcta suma {POINTS_PER_CORRECT}{' '}
+        Recorre las {STAGES.length} etapas del software factory de este repo: la cola de issues, los
+        ocho agentes, sus archivos, el gate, las revisiones y la decisión final. Cada etapa
+        tiene una animación y al menos una pregunta. Cada respuesta correcta suma {POINTS_PER_CORRECT}{' '}
         puntos, hasta {maxScore()}.
       </p>
       <button type="button" className="game__button" ref={startRef} onClick={onStart}>
@@ -205,9 +206,9 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
   );
 }
 
-// The guided loop tour: the floor plays stage by stage on its own, wrapping after
-// the last one, with the living pipeline on the floor and a melody in time.
-// Clicking (or Enter/Space on) a station jumps to it and pauses. The tour never
+// The guided loop tour: the plant plays one narrated scenario step at a time on its
+// own, wrapping after the last one, with a melody in time. Clicking (or Enter/Space
+// on) a station jumps to its step on the happy path and pauses. The tour never
 // answers a question and never changes the score. `audio` is the AudioContext
 // the "Ver el loop" click created (or null); the tour closes it on the way out.
 function TourScreen({ onExit, audio }) {
@@ -222,7 +223,8 @@ function TourScreen({ onExit, audio }) {
   const stepRef = useRef({ index: 0, playing: false, startedAt: 0 });
   const reduced = prefersReducedMotion();
   const { width, height } = useCompositionSize();
-  const stage = STAGES[tour.index];
+  const step = TOUR_STEPS[tour.index];
+  const scenario = SCENARIOS[step.scenarioIndex];
 
   const stopPhrase = useCallback(() => {
     phraseRef.current?.stop();
@@ -280,7 +282,7 @@ function TourScreen({ onExit, audio }) {
   // A selected station shows fully lit, paused, without its phrase.
   const onSelect = useCallback(
     (i) => {
-      setTour((t) => selectStep(t, i));
+      setTour((t) => selectStep(t, stepForStation(i)));
       const player = playerRef.current;
       player?.pause();
       player?.seekTo(reduced ? TOUR_FRAMES - 1 : LIT_FRAME);
@@ -309,7 +311,7 @@ function TourScreen({ onExit, audio }) {
         <Player
           ref={playerRef}
           component={FactoryLoop}
-          inputProps={{ stageIndex: tour.index, onSelect, pipeline: true }}
+          inputProps={{ stepIndex: tour.index, onSelect, pipeline: true }}
           durationInFrames={TOUR_PLAYER_FRAMES}
           loop
           fps={30}
@@ -325,12 +327,13 @@ function TourScreen({ onExit, audio }) {
       <div className="game__stage">
         <div className="game__media" aria-live="polite">
           <p className="game__progress">
-            Loop guiado · Etapa {tour.index + 1} de {STAGES.length}
+            Loop guiado · Escenario {step.scenarioIndex + 1} de {SCENARIOS.length} · Paso{' '}
+            {step.stepInScenario + 1} de {scenario.steps.length}
           </p>
           <h1 id="tour-title" className="game__title" tabIndex={-1} ref={headingRef}>
-            {stage.title}
+            {scenario.title}
           </h1>
-          <p className="game__text">{stage.summary}</p>
+          <p className="game__text">{scenario.summary}</p>
         </div>
         <p>
           <button type="button" className="game__button" onClick={() => setTour((t) => togglePlaying(t))}>

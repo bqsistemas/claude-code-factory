@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/app.js';
 import { AVATARS, OCTOPUS } from '../factory/avatars.js';
 import { STAGES } from '../src/game/engine.js';
+import { SCENARIOS } from '../src/game/scenarios.js';
 
 // The committed game bundle only carries the agents the game shows (STAGES). The
 // intake agent (job 012) is in AVATARS but not in the game until the bundle is rebuilt.
@@ -314,9 +315,9 @@ describe('job 005: fullscreen 3D factory scene with the octopus agent crew', () 
 describe('job 006: camera framing and flow labels', () => {
   const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-  test('AC-6: the committed game bundle contains the rework label', async () => {
+  test('AC-6: the committed game bundle contains the gate loop label', async () => {
     const bundle = await read('../public/game.js');
-    assert.ok(bundle.includes('Retrabajo: cambios pedidos'), 'bundle contains the rework label');
+    assert.ok(bundle.includes('GATE: FAIL'), 'bundle contains the gate loop label');
   });
 
   test('AC-7: the quest log gains the labeled flow item and keeps the earlier ones', async () => {
@@ -383,7 +384,7 @@ describe('job 007: iso-glow factory floor', () => {
       'filterUnits="userSpaceOnUse"',
       'url(#iso-bloom)',
       'stage.title',
-      'Retrabajo: cambios pedidos',
+      'GATE: FAIL',
       '<Octopus',
     ]) {
       assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
@@ -431,7 +432,7 @@ describe('job 007: iso-glow factory floor', () => {
     assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
 
     const bundle = await read('../public/game.js');
-    for (const text of ['Retrabajo: cambios pedidos', 'iso-scene']) {
+    for (const text of ['GATE: FAIL', 'iso-scene']) {
       assert.ok(bundle.includes(text), `bundle contains ${text}`);
     }
     for (const [name, { color }] of gameAvatars()) {
@@ -474,7 +475,7 @@ describe('job 008: guided loop tour', () => {
       'filterUnits="userSpaceOnUse"',
       'url(#iso-bloom)',
       'stage.title',
-      'Retrabajo: cambios pedidos',
+      'GATE: FAIL',
       '<Octopus',
     ]) {
       assert.ok(loop.includes(text), `FactoryLoop still contains ${text}`);
@@ -573,16 +574,15 @@ describe('job 008: guided loop tour', () => {
 
 describe('job 009: approval fork on the iso floor', () => {
   const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
-  const labels = ['APPROVE: merge a main', 'ESCALATE: needs-human'];
+  const labels = ['ACCEPT', 'NEEDS-INFO', 'REJECT', 'awaiting-merge', 'needs-human', 'CHANGES'];
 
-  test('AC-5: FactoryLoop draws the fork from FORK with dotted branch wires and keeps the earlier scene', async () => {
+  test('AC-7: FactoryLoop draws the plant from NODES and TRACKS and keeps the earlier scene', async () => {
     const loop = await read('../src/game/FactoryLoop.jsx');
     const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
-    assert.match(sceneImport, /\bFORK\b/, 'imports FORK from ./scene.js');
-    for (const text of ['iso-fork', 'iso-branch', 'strokeDasharray="2 4"']) {
+    for (const name of ['NODES', 'TRACKS', 'ACCEPT_LABEL']) assert.match(sceneImport, new RegExp(`\\b${name}\\b`), `imports ${name} from ./scene.js`);
+    for (const text of ['iso-fork', 'iso-branch', 'strokeDasharray="2 4"', 'Condición', 'Escribe']) {
       assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
     }
-    assert.ok(loop.includes('branch.label') || labels.every((l) => loop.includes(l)), 'FactoryLoop draws the branch labels');
     for (const text of [
       '<svg',
       'role="img"',
@@ -592,7 +592,7 @@ describe('job 009: approval fork on the iso floor', () => {
       'filterUnits="userSpaceOnUse"',
       'url(#iso-bloom)',
       'stage.title',
-      'Retrabajo: cambios pedidos',
+      'GATE: FAIL',
       '<Octopus',
       'onSelect',
       'iso-hits',
@@ -611,8 +611,9 @@ describe('job 009: approval fork on the iso floor', () => {
   });
 
   test('AC-6: the bundle carries the fork and /game stays inline-free', async () => {
-    const bundle = await read('../public/game.js');
-    for (const text of ['iso-fork', 'iso-branch', ...labels]) {
+    // esbuild escapes non-ASCII characters (\xE1, \u00e1), so compare the unescaped text.
+    const bundle = (await read('../public/game.js')).replace(/\\(?:u([0-9a-f]{4})|x([0-9a-f]{2}))/gi, (_, u, x) => String.fromCharCode(parseInt(u ?? x, 16)));
+    for (const text of ['iso-fork', 'iso-branch', 'bin-reject', 'awaiting-merge', ...labels, ...SCENARIOS.map((sc) => sc.title)]) {
       assert.ok(bundle.includes(text), `bundle contains ${text}`);
     }
     const html = await (await fetch(`${baseUrl}/game`)).text();
@@ -661,7 +662,8 @@ describe('job 010: living factory pipeline', () => {
     const main = await read('../src/game/main.jsx');
     const tour = topLevel(main, 'TourScreen');
     assert.ok(tour.includes('Loop guiado'), 'TourScreen renders Loop guiado');
-    assert.match(tour, /<h1\b[^>]*>\s*\{stage\.title\}\s*<\/h1>/, 'TourScreen renders the stage title h1');
+    assert.match(tour, /<h1\b[^>]*>\s*\{scenario\.title\}\s*<\/h1>/, 'TourScreen renders the scenario title h1');
+    assert.ok(tour.includes('Escenario') && tour.includes('Paso'), 'TourScreen shows the scenario and the step');
   });
 
   test('AC-2: a click never outlines a station; keyboard focus keeps the accent hairline', async () => {
@@ -719,9 +721,12 @@ describe('job 010: living factory pipeline', () => {
     }
 
     const loop = await read('../src/game/FactoryLoop.jsx');
-    assert.match(loop, /import\s*\{[^}]*\bpipelineAt\b[^}]*\}\s*from\s*'\.\/pipeline\.js'/, 'FactoryLoop imports pipelineAt');
+    assert.match(loop, /import\s*\{[^}]*\bpackageAt\b[^}]*\}\s*from\s*'\.\/pipeline\.js'/, 'FactoryLoop imports packageAt');
     const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
-    assert.match(sceneImport, /\bHUMAN_ROUTE\b/, 'FactoryLoop imports HUMAN_ROUTE from ./scene.js');
+    assert.match(sceneImport, /\bTRACKS\b/, 'FactoryLoop imports TRACKS from ./scene.js');
+    assert.match(main, /inputProps=\{\{\s*stepIndex:\s*tour\.index,\s*onSelect,\s*pipeline:\s*true\s*\}\}/, 'the tour Player passes stepIndex: tour.index');
+    assert.match(main, /stepForStation\(i\)/, 'a station click selects stepForStation(i)');
+    assert.ok(topLevel(loop, 'Caption').includes('Condición'), 'Caption renders Condición');
   });
 
   test('AC-8: /game keeps its CSP and markup, the bundle has the sound toggle, no audio files, docs and quest log updated', async () => {
@@ -810,7 +815,7 @@ describe('job 011: keep the tour pipeline running, with moving belts', () => {
     }
   });
 
-  test('AC-4: belts, fork branches, and the human route move with the frame; the rework loop stays still', async () => {
+  test('AC-4: belts and the branch, loop and human wires move with the frame', async () => {
     const loop = await read('../src/game/FactoryLoop.jsx');
     const pipelineImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/pipeline\.js'/)?.[1] ?? '';
     for (const name of ['treadOffset', 'BELT_PITCH', 'BELT_PERIOD_MS', 'WIRE_PERIOD_MS']) {
@@ -821,20 +826,15 @@ describe('job 011: keep the tour pipeline running, with moving belts', () => {
     for (const text of ['treadOffset', 'BELT_PITCH', 'BELT_PERIOD_MS']) {
       assert.ok(belt.includes(text), `Belt contains ${text}`);
     }
-    for (const name of ['ApprovalFork', 'HumanRoute']) {
+    for (const name of ['Wires']) {
       const source = topLevel(loop, name);
       assert.ok(source.length > 0, `FactoryLoop.jsx has a top-level ${name}`);
       for (const text of ['strokeDashoffset', 'treadOffset', 'WIRE_PERIOD_MS']) {
         assert.ok(source.includes(text), `${name} contains ${text}`);
       }
     }
-    const rework = topLevel(loop, 'ReworkLoop');
-    assert.ok(rework.length > 0, 'FactoryLoop.jsx has a top-level ReworkLoop');
-    for (const text of ['treadOffset', 'strokeDashoffset']) {
-      assert.ok(!rework.includes(text), `ReworkLoop does not contain ${text}`);
-    }
     const floor = topLevel(loop, 'IsoFloor');
-    for (const name of ['Belt', 'ApprovalFork', 'HumanRoute']) {
+    for (const name of ['Belt', 'Wires']) {
       assert.match(floor, new RegExp(`<${name}\\b[^>]*\\btime=`), `IsoFloor renders <${name} with a time= prop`);
     }
   });

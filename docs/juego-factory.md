@@ -4,27 +4,39 @@ Guía del juego que enseña cómo funciona el software factory de este repositor
 
 ## Qué es el juego
 
-Es un quiz interactivo en la página `/game`. Recorre, una por una, las siete etapas del
-loop del factory: el pedido de feature, la especificación, la construcción, la revisión
-en paralelo, la espera de todas las revisiones, la aprobación y el resultado final.
+Es un quiz interactivo en la página `/game`. Recorre, una por una, las nueve estaciones del
+factory v2: la cola de issues, `intake`, el ruteo, la especificación, la construcción, el
+gate de checks, la revisión en paralelo, la aprobación y el merge.
 
 Cada etapa muestra una animación hecha con [Remotion](https://www.remotion.dev/) (a través
-de `@remotion/player`) que dibuja el loop completo, resalta la etapa actual y muestra sus
+de `@remotion/player`) que dibuja la planta completa, resalta la etapa actual y muestra sus
 agentes, el modelo de cada uno y el archivo que escribe. Después de la animación aparece
-una pregunta de opción múltiple sobre esa etapa.
+una pregunta de opción múltiple sobre esa etapa (la revisión tiene dos).
 
-Los datos del juego salen de `.claude/skills/factory/SKILL.md` (la versión que se ejecuta)
-y de los archivos de `.claude/agents/`. Un test (`test/engine.test.js`) compara los agentes
-y modelos del juego con esos archivos, así que el juego no puede quedar desactualizado sin
-que falle la suite.
+Los datos del juego salen de `.claude/skills/factory/SKILL.md` (la versión que se ejecuta),
+de los archivos de `.claude/agents/` y de `factory/config.json`. Los tests
+(`test/engine.test.js` y `test/scenarios.test.js`) comparan los agentes, los modelos y el
+ruteo del juego con esos archivos, así que el juego no puede quedar desactualizado sin que
+falle la suite. El juego nunca lee jobs, el tablero, GitHub ni `config.json` mientras corre.
 
-> **Nota sobre el factory v2.** El factory ahora toma los issues de GitHub con la
-> etiqueta `factory` y suma un agente nuevo en la puerta: `intake` (modelo `fable`),
-> que acepta, pide más información o rechaza cada issue antes de la especificación.
-> Después vienen el gate de checks, los revisores según el riesgo y el merge del PR.
-> El juego todavía muestra el loop v1 de siete etapas; una actualización posterior lo
-> va a poner al día. Por eso el test de `engine.js` compara los agentes del juego con
-> `.claude/agents/` sin contar `intake`.
+## La planta
+
+El piso es una planta de producción isométrica:
+
+- Un **muelle** de entrada (la cola de issues) y la puerta de `intake`, un **portón de
+  clasificación** con tres salidas: `ACCEPT` sigue por la cinta, `NEEDS-INFO` va a un
+  contenedor delante de la línea y `REJECT` a otro detrás.
+- El ruteo es un **interruptor** con cuatro lámparas, una por lente (security, ux, ui y
+  code): se encienden las lentes que el job rutea.
+- La línea sigue por la especificación y la construcción hasta el **checkpoint** del gate.
+  Si `checks.sh` falla (`GATE: FAIL`), un bucle vuelve a la construcción.
+- La revisión tiene cuatro cápsulas; solo se encienden las de los revisores ruteados. Si
+  alguien pide `CHANGES`, otro bucle vuelve a la construcción.
+- Después del approver hay una **bifurcación** y cuatro **bahías** de salida: `merged`,
+  `awaiting-merge`, `needs-human` y `rejected`.
+
+Las cintas tienen rodillos que se mueven y los cables punteados de las ramas, los bucles y
+las rutas de una persona avanzan con la animación.
 
 ## Cómo jugar
 
@@ -41,85 +53,115 @@ que falle la suite.
 
 Todo se maneja con teclado: cada control es un botón.
 
-Si solo quieres mirar, presiona **Ver el loop** en la pantalla inicial. El recorrido
-avanza solo por las etapas, una cada 10 segundos, y al terminar la última vuelve a la
-primera: la estación activa se ilumina, el panel explica la etapa y el recuadro muestra
-los agentes que trabajan en ella. **Pausar** detiene el avance y **Reanudar** lo
-continúa. Si haces clic en una estación (o la eliges con Tab y presionas Enter o
-Espacio), el recorrido salta a ella y se pausa para que leas su explicación. **Salir del
-loop** te devuelve a la pantalla inicial; el recorrido no suma ni resta puntos.
+Si solo quieres mirar, presiona **Ver el loop** en la pantalla inicial. El recorrido es un
+loop guiado de diez escenarios, uno por cada camino condicional del factory, con unos 22
+pasos de 10 segundos cada uno; al terminar el último vuelve al primero. En cada paso viaja un
+paquete por la planta y el recuadro cuenta qué pasa y por qué, quién actúa (agente y
+modelo, o `script`, `orquestador` y `persona`), qué archivo se escribe (`Escribe:`) y qué
+condición eligió la rama (`Condición:`). El panel muestra `Loop guiado · Escenario s de N ·
+Paso k de m`, con el título y el resumen del escenario. **Pausar** detiene el avance y
+**Reanudar** lo continúa. Si haces clic en una estación (o la eliges con Tab y presionas
+Enter o Espacio), el recorrido salta al paso del camino feliz que termina en ella y se
+pausa. **Salir del loop** te devuelve a la pantalla inicial; el recorrido no suma ni resta
+puntos.
 
-En el recorrido la planta está viva: varios paquetes de features avanzan por la línea a
-la vez. Cada 2,5 segundos entra uno nuevo en la estación 1 y todos pasan de estación en
-estación. En la bifurcación, los paquetes con `APPROVE` hacen merge a `main`: llegan a
-la plataforma de `main` y se funden en ella. Los paquetes con `ESCALATE` quedan en la
-cola de `needs-human`, apilados sobre su plataforma, hasta que una persona los revisa.
-Entonces recorren la ruta punteada de la persona y llegan a `main` más tarde. Es una
-animación fija que se repite en cada vuelta; no lee los jobs reales de `board.json`.
+Los diez escenarios son:
+
+1. **Camino feliz con `auto_merge`** (`auto-merge-on`): el paquete recorre todas las
+   estaciones, de la cola al merge. Con `auto_merge: true` el job termina solo en `merged`.
+2. **`intake` rechaza** (`reject`): `REJECT`, el job termina en `rejected`.
+3. **`intake` pide más información** (`needs-info`): `NEEDS-INFO`, el job espera una
+   respuesta y vuelve a `intake`.
+4. **El gate falla** (`gate-fail`): `GATE: FAIL`, el job vuelve al builder sin gastar
+   revisores.
+5. **Un revisor pide cambios** (`changes`): `CHANGES`, el job vuelve al builder, hasta
+   `max_rounds` rondas.
+6. **El approver escala** (`escalate`): `ESCALATE`, el job queda en `needs-human`.
+7. **Sin `auto_merge`** (`auto-merge-off`): `auto_merge: false`, el PR queda listo y el job
+   en `awaiting-merge`.
+8. **Una persona mergea el PR** (`human-merge`): la persona mergea en GitHub y el job pasa
+   de `awaiting-merge` a `merged`.
+9. **Retrabajo** (`human-rework`): una persona corre `/factory rework` y el job vuelve a la
+   construcción.
+10. **Se cierra el PR** (`pr-closed`): una persona cierra el PR sin mergear (`PR cerrado`) y
+    el job termina en `rejected`.
+
+Cada escenario arranca en la estación donde se desvía; solo el primero parte de la cola.
+Es una animación fija que se repite en cada vuelta; no lee los jobs reales de `board.json`.
 
 Las cápsulas de los agentes se encienden con el color de su pulpo: por ejemplo, rojo
 para `review-security` y azul para `review-code`.
 
 El recorrido también tiene una melodía sintetizada en el navegador, sin archivos de
-audio. Cada etapa tiene su frase de 16 tiempos, que dura lo mismo que la etapa (10
-segundos), y los paquetes entran al ritmo de la melodía. El sonido arranca al presionar
+audio. Cada paso tiene su frase de 16 tiempos, que dura lo mismo que el paso (10
+segundos). El sonido arranca al presionar
 **Ver el loop**. El botón **Silenciar** lo apaga y **Activar sonido** lo vuelve a
 encender. **Pausar** y **Salir del loop** también detienen la melodía.
 
 ## Etapas del factory
 
-### 1. Pedido de feature
+### 1. Cola de issues
 
 - Agentes: ninguno; lo hace el orquestador (la sesión que ejecuta `/factory`).
-- Archivo: `feature.md` (además crea el job en `factory/board.json`, que solo escribe el
-  orquestador).
+- Archivo: `job.json`. Los issues abiertos con la etiqueta `factory` son la cola.
 
-### 2. Especificación
+### 2. Intake
+
+- Agente: `intake`, modelo `fable`.
+- Archivo: `intake.md`, que empieza con `ACCEPT`, `NEEDS-INFO` o `REJECT`, con el riesgo y
+  las superficies.
+
+### 3. Ruteo
+
+- Agentes: ninguno; lo hace el script `route`, que también crea el worktree.
+- Archivo: `job.json`. Elige el modelo del builder y los revisores según `factory/config.json`.
+
+### 4. Especificación
 
 - Agente: `spec-writer`, modelo `opus`.
 - Archivo: `spec.md`, con criterios de aceptación numerados (AC-1, AC-2, ...).
 
-### 3. Construcción
+### 5. Construcción
 
-- Agente: `builder`, modelo `opus`.
+- Agente: `builder`, `sonnet` (o `opus` si el riesgo es alto).
 - Archivo: `build.md`, que empieza con `STATUS: READY`. Trabaja en la rama
   `factory/<job-id>` dentro de `.worktrees/<job-id>`, con un test por criterio.
 
-### 4. Revisión en paralelo
+### 6. Gate de checks
 
-- Agentes, lanzados en un solo mensaje:
-  - `review-security`, modelo `opus`
-  - `review-ux`, modelo `sonnet`
-  - `review-ui`, modelo `sonnet`
-  - `review-code`, modelo `sonnet`
-- Archivos: `round-<n>/review-security.md`, `review-ux.md`, `review-ui.md` y
-  `review-code.md`. Cada uno empieza con `VERDICT: PASS` o `VERDICT: CHANGES`.
+- Agentes: ninguno; lo hace el script `gate`.
+- Archivo: `round-<n>/checks.md`. Corre `checks.sh`; con `GATE: FAIL` el job vuelve al
+  builder y no se lanza ningún revisor.
 
-### 5. Esperar a todos (WAIT FOR ALL)
+### 7. Revisión en paralelo
 
-- Agentes: ninguno; lo hace el orquestador.
-- Archivo: `factory/board.json`. La ronda termina solo cuando existen los cuatro archivos
-  de revisión. Si alguno dice `CHANGES`, el orquestador retoma al mismo `builder` para una
-  nueva ronda, como máximo 2 rondas.
+- Agentes, solo los que eligió `route`, lanzados en un solo mensaje:
+  - `review-security`, modelo `opus`, si toca seguridad
+  - `review-ux`, modelo `sonnet`, si toca la UI
+  - `review-ui`, modelo `haiku`, si toca la UI
+  - `review-code`, `haiku` con riesgo bajo y `sonnet` en los demás casos; siempre corre
+- Archivos: `round-<n>/review-<lente>.md`. Cada uno empieza con `VERDICT: PASS` o
+  `VERDICT: CHANGES`. La ronda cierra cuando existen todos; con `CHANGES` el job vuelve al
+  builder, hasta `max_rounds` rondas.
 
-### 6. Aprobación
+### 8. Aprobación
 
 - Agente: `approver`, modelo `opus`.
-- Archivo: `decision.md`, que empieza con `APPROVE` o `ESCALATE`.
+- Archivo: `decision.md`, que empieza con `APPROVE` o `ESCALATE`. Con `ESCALATE` el job
+  queda en `needs-human`.
 
-### 7. Resultado
+### 9. Merge
 
-- Agentes: ninguno; lo hace el orquestador.
-- Archivo: `factory/board.json`. Con `APPROVE` hace `git merge --no-ff` a `main`. Con
-  `ESCALATE` el job queda en `needs-human` y una persona decide con
-  `/factory approve <id>` o `/factory rework <id> <nota>`.
-- En la planta, la línea hace una bifurcación después de Resultado: `APPROVE` va a
-  merge a `main` y `ESCALATE` va a `needs-human`.
+- Agentes: ninguno; lo hace el script.
+- Archivo: `merge-checks.md`. Con `auto_merge: true` el PR se mergea a `main` y el job termina en
+  `merged`; con `auto_merge: false` queda en `awaiting-merge` hasta que una persona lo
+  mergee. Desde `needs-human` una persona puede pedir retrabajo con `/factory rework` o
+  cerrar el PR (`PR cerrado`), y el job termina en `rejected`.
 
 ## Puntuación
 
 - Cada respuesta correcta suma **10 puntos**.
-- Hay una pregunta por etapa: 7 preguntas, así que el máximo es **70 puntos**.
+- Hay una pregunta por etapa, y dos en la revisión: 10 preguntas, así que el máximo es **100 puntos**.
 - Una respuesta incorrecta suma 0 puntos y no resta: no hay penalización. El juego avanza
   igual y la explicación enseña la respuesta correcta.
 - El puntaje se ve siempre arriba a la derecha. No se guarda: al recargar la página o al

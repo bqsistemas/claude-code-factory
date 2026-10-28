@@ -38,3 +38,14 @@ test('AC-8: docs/juego-factory.md has the required sections, every agent, and ru
     assert.ok(guide.includes(text), `guide mentions ${text}`);
   }
 });
+
+test('AC-8: the guide describes the v2 plant and its ten scenarios; project.md no longer leaves intake out', async () => {
+  const guide = await readFile(new URL('../docs/juego-factory.md', import.meta.url), 'utf8');
+  for (const text of [
+    'NEEDS-INFO', 'REJECT', 'checks.sh', 'CHANGES', 'max_rounds', 'ESCALATE', 'auto_merge', 'awaiting-merge', '/factory rework', 'PR cerrado',
+  ]) {
+    assert.ok(guide.includes(text), `guide mentions ${text}`);
+  }
+  const project = await readFile(new URL('../factory/project.md', import.meta.url), 'utf8');
+  assert.doesNotMatch(project, /all but `?intake`?/, 'project.md no longer says the game leaves out intake');
+});
