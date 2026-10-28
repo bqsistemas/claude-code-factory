@@ -488,7 +488,8 @@ main {
 }
 
 /* On a question screen the section is a transparent shell and .game__stage is
-   the floating card, docked to the bottom on narrow screens. It scrolls inside
+   the floating card, docked to the bottom on narrow screens and to the top on
+   wide ones (see the 64rem block below). It scrolls inside
    instead of growing past its cap, so the scene above stays visible. */
 .game-page .game__panel:has(> .game__stage) {
   display: flex;
@@ -515,12 +516,19 @@ main {
   box-shadow: 0 0 18px rgba(0, 0, 0, 0.6);
 }
 
-/* Wide screens: the card docks to the right, media text above the quiz. */
+/* Wide screens: the card docks to the top, full width, media beside the quiz.
+   `src/game/layout.js` mirrors the 64rem breakpoint and the 40dvh cap. */
 @media (min-width: 64rem) {
   .game-page .game__panel:has(> .game__stage) {
-    width: min(32rem, 40vw);
-    max-height: 100%;
-    margin: auto 0 auto auto;
+    width: 100%;
+    max-width: none;
+    max-height: min(100%, 40vh);
+    max-height: min(100%, 40dvh);
+    margin: 0 0 auto;
+  }
+
+  .game-page .game__stage {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 }
 

@@ -3,7 +3,7 @@
 // is live glows in the accent color: the current station, its agents, and the
 // belt the job package rides in on. Lit agent pods glow in their avatar colour.
 // On the guided tour (`pipeline`), many packages flow through the line at once
-// (see pipeline.js). An HTML caption in the top-left corner keeps the agents,
+// (see pipeline.js). An HTML caption, left-aligned under the top-docked card on wide screens, keeps the agents,
 // models, and output file readable as text.
 // Colors come from CSS classes and :root tokens in styles.css (never a style element:
 // the CSP blocks it). Caption styles are React style objects (applied through the
@@ -12,6 +12,7 @@ import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } fr
 
 import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
+import { screenLayout } from './layout.js';
 import { Octopus } from './Octopus.jsx';
 import { pipelineAt } from './pipeline.js';
 import { TOUR_STEP_MS } from './tour.js';
@@ -48,43 +49,6 @@ const LIT_FRAMES = [0, 15];
 const PACKAGE_FRAMES = [15, 75];
 // The pulse is a 70-unit dash on a path with pathLength 1000 (see .iso-pulse).
 const PULSE_OFFSETS = [70, -1000];
-
-// Layout breakpoint and docked panel size, mirrored from styles.css
-// (min-width: 64rem; width: min(32rem, 40vw); bottom dock up to 45dvh).
-const WIDE = 1024;
-const panelWidth = (width) => Math.min(512, 0.4 * width) + 16;
-const BOTTOM_PANEL = 0.45;
-const HUD_HEIGHT = 56;
-const MARGIN = 16;
-
-// Where things go on screen: the caption box in the top-left corner and the
-// floor drawing in the free area below it, left of a right-docked panel or above
-// a bottom-docked one.
-function screenLayout(stage, width, height) {
-  const unit = Math.min(1.25, Math.max(0.75, Math.min(width, height) / 720));
-  const wide = width >= WIDE;
-  const captionTop = HUD_HEIGHT + 8;
-  const freeRight = wide ? width - panelWidth(width) : width;
-  const captionWidth = Math.min(freeRight - 2 * MARGIN, 760 * unit);
-  // Rough caption height: padding and the output line, plus one row per two or
-  // three chips. The stage number and title live in the panel, not here.
-  const perRow = Math.max(1, Math.floor(captionWidth / (260 * unit)));
-  const rows = stage.agents.length === 0 ? 0.6 : Math.ceil(stage.agents.length / perRow);
-  const captionBottom = captionTop + (58 + rows * 42) * unit;
-  const freeBottom = wide ? height : height * (1 - BOTTOM_PANEL);
-  const top = captionBottom + 8;
-  return {
-    unit,
-    captionTop,
-    captionWidth,
-    scene: {
-      left: MARGIN,
-      top,
-      width: Math.max(1, freeRight - 2 * MARGIN),
-      height: Math.max(1, freeBottom - MARGIN - top),
-    },
-  };
-}
 
 // --- Iso kernel (iso-figure, MIT) ----------------------------------------------
 
