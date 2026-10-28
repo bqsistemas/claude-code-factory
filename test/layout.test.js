@@ -232,4 +232,5 @@ test('AC-4: the dock caption avatar renders outside the Remotion Player', async 
   const body = dock.slice(0, dock.indexOf('\n}\n'));
   assert.match(body, /StaticOctopus/);
   assert.doesNotMatch(body, /<Octopus/);
+  assert.ok(body.includes('key={`${chip.name}-${i}`}'));
 });

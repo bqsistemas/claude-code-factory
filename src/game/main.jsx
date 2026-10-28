@@ -150,7 +150,7 @@ function DockCaption({ item }) {
           chips.map((chip, i) => {
             const agent = Object.hasOwn(AVATARS, chip.name);
             return (
-              <span key={`-`} className={agent ? 'game__chip game__chip--agent' : 'game__chip'}>
+              <span key={`${chip.name}-${i}`} className={agent ? 'game__chip game__chip--agent' : 'game__chip'}>
                 {agent && <StaticOctopus name={chip.name} size={24} />}
                 {chip.model ? `${chip.name} · ${chip.model}` : chip.name}
               </span>

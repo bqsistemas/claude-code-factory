@@ -518,6 +518,7 @@ main {
 
 /* The floor caption's content, shown in the dock card below 64rem. */
 .game__caption {
+  overflow-wrap: anywhere;
   margin: 0.5rem 0;
   padding: 0.5rem 0.75rem;
   border: 2px solid var(--color-magenta);
