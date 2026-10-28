@@ -3,14 +3,15 @@
 Every factory agent reads this before working. The orchestrator updates it when a
 merge changes the stack or the test command.
 
-## Snapshot (2026-10-27, after job 002)
+## Snapshot (2026-10-27, after job 005)
 
 - App: gamified landing page plus a factory learning game at `/game`, served by a
   zero-dependency Node HTTP server.
 - Language and runtime: Node.js 20+, ES modules (`"type": "module"`), no runtime
   dependencies. Installed: Node.js 20.9, npm 10.1, Python 3.12.
 - Dev dependencies (exact-pinned): `remotion`, `@remotion/player`, `react`,
-  `react-dom`, `esbuild`. Run `npm install` before building the game. Keep
+  `react-dom`, `esbuild`, plus `three`, `@remotion/three` and `@react-three/fiber`
+  for the WebGL scene. Run `npm install` before building the game. Keep
   `dependencies` empty; a test enforces it.
 - Run: `npm start` (listens on `PORT`, default 3000).
 - Test command: `npm test` (`node --test test/`, built-in runner).
@@ -25,8 +26,15 @@ merge changes the stack or the test command.
 - `public/`: `index.html`, `game.html`, `game.js` (built bundle) and `styles.css`.
   New static files must be added to the route map.
 - `src/game/`: `engine.js` (plain JS: loop stages, questions, scoring; runs in Node
-  and the browser), `FactoryLoop.jsx` (Remotion composition), `main.jsx` (Player + quiz UI).
+  and the browser), `scene.js` (plain JS: 3D station layout, camera, package path,
+  composition size), `FactoryLoop.jsx` (Remotion composition: fullscreen WebGL
+  factory floor via `ThreeCanvas`), `Octopus.jsx` / `Octopus3D.jsx` (2D and 3D agent
+  characters), `main.jsx` (Player + quiz UI).
   `engine.js` must match `.claude/agents/` names and models; a test checks it.
+- `factory/avatars.js`: the octopus agent characters, shared by the dashboard and the
+  game bundle. Rebuild `public/game.js` whenever it changes.
+- `FactoryLoop.jsx` copies layout numbers from `styles.css` (breakpoint, panel width,
+  bottom-panel height, HUD height) to aim the camera; change both together.
 - `docs/juego-factory.md`: Spanish guide to the game.
 - `test/`: one `<module>.test.js` per module; tests start the app on port 0.
 
