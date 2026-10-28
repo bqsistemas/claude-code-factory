@@ -447,3 +447,120 @@ describe('job 007: iso-glow factory floor', () => {
     }
   });
 });
+
+describe('job 008: guided loop tour', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const cssRules = (css) => [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+
+  test('AC-4: FactoryLoop draws an optional layer of clickable, keyboard-operable stations', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
+    assert.match(sceneImport, /\bstationOutline\b/, 'imports stationOutline from ./scene.js');
+    for (const text of ['onSelect', 'iso-hits', 'iso-hit', 'role="group"', 'role="button"', 'tabIndex={0}', 'onKeyDown', 'aria-current', 'Enter']) {
+      assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
+    }
+    for (const text of [
+      '<svg',
+      'role="img"',
+      'aria-label',
+      'iso-scene',
+      'iso-hot',
+      'filterUnits="userSpaceOnUse"',
+      'url(#iso-bloom)',
+      'stage.title',
+      'Retrabajo: cambios pedidos',
+      '<Octopus',
+    ]) {
+      assert.ok(loop.includes(text), `FactoryLoop still contains ${text}`);
+    }
+    for (const text of ['<style', 'ThreeCanvas', 'Octopus3D', 'getContext(']) {
+      assert.ok(!loop.includes(text), `FactoryLoop does not contain ${text}`);
+    }
+  });
+
+  test('AC-5: main.jsx has the "Ver el loop" tour screen driven by tour.js', async () => {
+    const main = await read('../src/game/main.jsx');
+    const tourImport = main.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/tour\.js'/)?.[1] ?? '';
+    for (const name of ['createTour', 'nextStep', 'selectStep', 'togglePlaying', 'TOUR_STEP_MS']) {
+      assert.match(tourImport, new RegExp(`\\b${name}\\b`), `imports ${name} from ./tour.js`);
+    }
+    for (const text of [
+      'Ver el loop',
+      'Loop guiado',
+      'Pausar',
+      'Reanudar',
+      'Salir del loop',
+      'aria-live="polite"',
+      'setTimeout(',
+      'clearTimeout(',
+      'onSelect',
+    ]) {
+      assert.ok(main.includes(text), `main.jsx contains ${text}`);
+    }
+    const players = main.match(/<Player\b[\s\S]*?\/>/g) ?? [];
+    assert.ok(players.length >= 2, 'main.jsx renders a Player for the quiz and the tour');
+    for (const player of players) {
+      assert.doesNotMatch(player, /\bcontrols\b/, 'Player has no controls prop');
+    }
+  });
+
+  test('AC-6: styles.css makes only the station hit polygons clickable, with an accent focus hairline', async () => {
+    const css = await (await fetch(`${baseUrl}/styles.css`)).text();
+    const rules = cssRules(css);
+    assert.ok(
+      rules.some(
+        (r) => r.selector.includes('.iso-hit') && /pointer-events:\s*all\s*!important/.test(r.body) && /cursor:\s*pointer/.test(r.body),
+      ),
+      'an .iso-hit rule sets pointer-events: all !important and cursor: pointer',
+    );
+    assert.ok(
+      rules.some((r) => r.selector.includes('.iso-hit:focus-visible') && r.body.includes('var(--iso-accent')),
+      'an .iso-hit:focus-visible rule uses var(--iso-accent',
+    );
+
+    const scene = [...css.matchAll(/^\.game__scene\s*\{([^}]*)\}/gm)].map((m) => m[1]);
+    assert.ok(
+      scene.some((body) => /position:\s*fixed/.test(body) && /inset:\s*0/.test(body) && /pointer-events:\s*none/.test(body)),
+      '.game__scene rule with position: fixed, inset: 0, pointer-events: none',
+    );
+    const sceneAll = [...css.matchAll(/^\.game__scene \*\s*\{([^}]*)\}/gm)].map((m) => m[1]);
+    assert.ok(
+      sceneAll.some((body) => /pointer-events:\s*none\s*!important/.test(body)),
+      '.game__scene * rule keeps pointer-events: none !important',
+    );
+  });
+
+  test('AC-7: the bundle carries the tour, /game stays inline-free, and the docs explain it', async () => {
+    const bundle = await read('../public/game.js');
+    for (const text of ['Ver el loop', 'Salir del loop', 'iso-hits']) {
+      assert.ok(bundle.includes(text), `bundle contains ${text}`);
+    }
+
+    const html = await (await fetch(`${baseUrl}/game`)).text();
+    assert.equal(html.match(/<script/gi).length, 1, 'exactly one script');
+    assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
+
+    const guide = await read('../docs/juego-factory.md');
+    assert.ok(guide.includes('Ver el loop'), 'guide mentions Ver el loop');
+    for (const heading of ['## Qué es el juego', '## Cómo jugar', '## Etapas del factory', '## Puntuación', '## Cómo ejecutarlo']) {
+      assert.match(guide, new RegExp(`^${heading}\\s*$`, 'm'), `heading ${heading}`);
+    }
+  });
+
+  test('AC-8: the quest log gains the guided tour item and keeps the earlier ones', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    for (const text of [
+      'Take the guided factory loop tour',
+      'Build the landing page',
+      'Play the factory learning game',
+      'Meet the octopus agent crew',
+      'Tour the 3D factory floor',
+      'Follow the labeled factory flow',
+      'Light up the iso-glow factory floor',
+    ]) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+  });
+});
