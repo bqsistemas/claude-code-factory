@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Player } from '@remotion/player';
 
+import { AVATARS } from '../../factory/avatars.js';
 import { FactoryLoop } from './FactoryLoop.jsx';
+import { Octopus } from './Octopus.jsx';
+import { StaticOctopus } from './StaticOctopus.js';
+import { captionContent } from './layout.js';
 import { compositionSize } from './scene.js';
 import {
   POINTS_PER_CORRECT,
@@ -18,7 +22,7 @@ import {
 import { phraseFor } from './melody.js';
 import { SCENARIOS, TOUR_STEPS } from './scenarios.js';
 import { schedulePhrase } from './sound.js';
-import { TOUR_STEP_MS, createTour, nextStep, selectStep, stepForStation, togglePlaying } from './tour.js';
+import { SELECT_FRAME, TOUR_STEP_MS, createTour, nextStep, selectStep, stepForStation, togglePlaying } from './tour.js';
 
 // At most 5 seconds (WCAG 2.2.2): the quiz Player has no pause control.
 const DURATION = 120;
@@ -30,9 +34,6 @@ const TOUR_FRAMES = (TOUR_STEP_MS * 30) / 1000;
 // the Player stayed flagged "playing" with its frame loop stopped and froze the
 // tour for good. Only pause() (Pausar, a station select) stops this one.
 const TOUR_PLAYER_FRAMES = TOUR_FRAMES + 30;
-// After a station is selected the paused tour shows this frame: the station is
-// fully lit (frames 0-15) and the package has arrived on it (frame 75).
-const LIT_FRAME = 75;
 // Melody gain: quiet, well under sound.js's 0.2 cap.
 const VOLUME = 0.06;
 const stageIndexOf = (stageId) => STAGES.findIndex((s) => s.id === stageId);
@@ -135,6 +136,40 @@ function Intro({ onStart, onTour }) {
   );
 }
 
+// The floor caption's content in the dock card, for phones where the floor box has
+// no room for it. Hidden at 64rem and wider (styles.css), where the floor draws it.
+function DockCaption({ item }) {
+  const { text, chips, file, condition } = captionContent(item);
+  return (
+    <div className="game__caption">
+      {text && <p className="game__caption-text">{text}</p>}
+      <div className="game__caption-chips">
+        {chips.length === 0 ? (
+          <span>Sin agentes: lo hace el orquestador o un script</span>
+        ) : (
+          chips.map((chip, i) => {
+            const agent = Object.hasOwn(AVATARS, chip.name);
+            return (
+              <span key={`${chip.name}-${i}`} className={agent ? 'game__chip game__chip--agent' : 'game__chip'}>
+                {agent && <StaticOctopus name={chip.name} size={24} />}
+                {chip.model ? `${chip.name} · ${chip.model}` : chip.name}
+              </span>
+            );
+          })
+        )}
+      </div>
+      <p className="game__caption-line">
+        Escribe: <span className="game__caption-file">{file}</span>
+      </p>
+      {condition && (
+        <p className="game__caption-line">
+          Condición: <span className="game__caption-condition">{condition}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StageScreen({ question, number, result, onAnswer, onNext }) {
   const stageIndex = stageIndexOf(question.stageId);
   const stage = STAGES[stageIndex];
@@ -157,6 +192,7 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
             {stage.title}
           </h1>
           <p className="game__text">{stage.summary}</p>
+          <DockCaption item={stage} />
         </div>
         <div className="game__quiz">
           <h2 className="game__question" id="question-prompt">{question.prompt}</h2>
@@ -285,7 +321,7 @@ function TourScreen({ onExit, audio }) {
       setTour((t) => selectStep(t, stepForStation(i)));
       const player = playerRef.current;
       player?.pause();
-      player?.seekTo(reduced ? TOUR_FRAMES - 1 : LIT_FRAME);
+      player?.seekTo(reduced ? TOUR_FRAMES - 1 : SELECT_FRAME);
       stopPhrase();
     },
     [reduced, stopPhrase],
@@ -334,6 +370,7 @@ function TourScreen({ onExit, audio }) {
             {scenario.title}
           </h1>
           <p className="game__text">{scenario.summary}</p>
+          <DockCaption item={step} />
         </div>
         <p>
           <button type="button" className="game__button" onClick={() => setTour((t) => togglePlaying(t))}>

@@ -12,6 +12,27 @@ export const BOTTOM_PANEL = 0.45; // narrow: bottom dock max-height 45dvh
 
 /** Caption body text size in px: 14 scaled with the screen, never under 12. */
 export const captionText = (unit) => Math.max(12, 14 * unit);
+/** Chip text size in px: 15 scaled with the screen, never under 12. */
+export const chipText = (unit) => Math.max(12, 15 * unit);
+
+/**
+ * What any caption shows, as plain data: the floor caption and the dock caption
+ * both render it. A tour step has narration, actors and maybe a condition; a stage
+ * has agents and no narration.
+ * @returns {{ text: string|null, chips: { name: string, model?: string }[], file: string, condition: string|null }}
+ */
+export function captionContent(item) {
+  if (item.actors) {
+    return { text: item.text, chips: item.actors, file: item.file, condition: item.condition ?? null };
+  }
+  return {
+    text: null,
+    chips: item.agents.map((agent) => ({ name: agent.name, model: agent.routing ?? agent.model })),
+    file: item.output,
+    condition: null,
+  };
+}
+
 /** The smallest size, in px, a floor label may render at. */
 export const MIN_LABEL_PX = 10;
 
@@ -37,7 +58,8 @@ export function floorView(box, focus) {
 
 // The caption box and the floor drawing. Wide: the card docks at the top, the
 // caption sits under it and the floor fills the full width below. Narrow: the
-// caption is in the top-left corner and the floor sits above the bottom dock.
+// caption moves into the bottom dock card (`captionInDock`, drawn in HTML), so the
+// floor box takes all the room between the HUD and the dock.
 // `item` is a stage (quiz) or a tour step: a step has `actors` and a narration
 // `text`, a stage has `agents`.
 export function screenLayout(item, width, height) {
@@ -45,6 +67,21 @@ export function screenLayout(item, width, height) {
   const wide = width >= WIDE;
   const captionTop = wide ? HUD_HEIGHT + PANEL_GAP + TOP_PANEL * height + 8 : HUD_HEIGHT + 8;
   const captionWidth = Math.min(width - 2 * MARGIN, 760 * unit);
+  if (!wide) {
+    const top = HUD_HEIGHT + 8;
+    return {
+      unit,
+      captionTop: top,
+      captionWidth,
+      captionInDock: true,
+      scene: {
+        left: MARGIN,
+        top,
+        width: Math.max(1, width - 2 * MARGIN),
+        height: Math.max(1, height * (1 - BOTTOM_PANEL) - MARGIN - top),
+      },
+    };
+  }
   // Rough caption height: padding and the output line, plus one row per two or
   // three chips. The stage number and title live in the panel, not here.
   const chips = (item.actors ?? item.agents).length;
@@ -62,6 +99,7 @@ export function screenLayout(item, width, height) {
     unit,
     captionTop,
     captionWidth,
+    captionInDock: false,
     scene: {
       left: MARGIN,
       top,

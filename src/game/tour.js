@@ -7,6 +7,12 @@ import { TOUR_STEPS } from './scenarios.js';
 /** How long each step stays on screen, in milliseconds. */
 export const TOUR_STEP_MS = 10000;
 
+/**
+ * The Player frame (30 fps) a paused tour shows after a station is selected: the
+ * station is fully lit (frames 0-15) and the package has arrived on it.
+ */
+export const SELECT_FRAME = 75;
+
 /** A new tour: first step, playing. */
 export function createTour() {
   return { index: 0, playing: true };
