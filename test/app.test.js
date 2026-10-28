@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 import { createApp } from '../src/app.js';
 import { AVATARS, OCTOPUS } from '../factory/avatars.js';
+import { STAGES } from '../src/game/engine.js';
+
+// The committed game bundle only carries the agents the game shows (STAGES). The
+// intake agent (job 012) is in AVATARS but not in the game until the bundle is rebuilt.
+const gameAvatars = () => Object.entries(AVATARS)
+  .filter(([name]) => STAGES.some((stage) => stage.agents.some((agent) => agent.name === name)));
 
 const rootDir = fileURLToPath(new URL('..', import.meta.url));
 
@@ -238,7 +244,7 @@ describe('job 004: one-page game with animated octopus agent characters', () => 
   test('AC-6: the committed game bundle carries the shared octopus geometry and colors', async () => {
     const bundle = await read('../public/game.js');
     assert.ok(bundle.includes(OCTOPUS.head), 'bundle contains OCTOPUS.head');
-    for (const [name, { color }] of Object.entries(AVATARS)) {
+    for (const [name, { color }] of gameAvatars()) {
       assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
     }
   });
@@ -283,7 +289,7 @@ describe('job 005: fullscreen 3D factory scene with the octopus agent crew', () 
 
   test('AC-7: the bundle includes the avatar colors; .game__scene is a fixed full-viewport layer', async () => {
     const bundle = await read('../public/game.js');
-    for (const [name, { color }] of Object.entries(AVATARS)) {
+    for (const [name, { color }] of gameAvatars()) {
       assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
     }
 
@@ -428,7 +434,7 @@ describe('job 007: iso-glow factory floor', () => {
     for (const text of ['Retrabajo: cambios pedidos', 'iso-scene']) {
       assert.ok(bundle.includes(text), `bundle contains ${text}`);
     }
-    for (const [name, { color }] of Object.entries(AVATARS)) {
+    for (const [name, { color }] of gameAvatars()) {
       assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
     }
   });

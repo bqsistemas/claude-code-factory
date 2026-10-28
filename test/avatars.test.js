@@ -21,7 +21,7 @@ async function agentNames() {
 
 test('AC-1: AVATARS matches .claude/agents/ with distinct colors and accessories; OCTOPUS has the shared shape', async () => {
   const fromFiles = (await agentNames()).sort();
-  assert.equal(fromFiles.length, 7, 'seven agent files');
+  assert.equal(fromFiles.length, 8, 'eight agent files');
   assert.deepEqual(Object.keys(AVATARS).sort(), fromFiles);
 
   for (const [name, { color, accessory }] of Object.entries(AVATARS)) {
@@ -30,9 +30,9 @@ test('AC-1: AVATARS matches .claude/agents/ with distinct colors and accessories
     assert.ok(accessory.trim(), `${name} accessory is non-empty`);
   }
   const colors = Object.values(AVATARS).map((a) => a.color.toLowerCase());
-  assert.equal(new Set(colors).size, 7, 'seven distinct colors');
+  assert.equal(new Set(colors).size, 8, 'eight distinct colors');
   const accessories = Object.values(AVATARS).map((a) => a.accessory);
-  assert.equal(new Set(accessories).size, 7, 'seven distinct accessories');
+  assert.equal(new Set(accessories).size, 8, 'eight distinct accessories');
 
   assert.equal(OCTOPUS.viewBox, '0 0 32 32');
   assert.equal(typeof OCTOPUS.head, 'string');
@@ -59,7 +59,7 @@ test('AC-2: avatarSvg builds a safe, distinct octopus per agent and returns "" f
     assert.doesNotMatch(svg, /style=|href|src=|url\(|<script|aria-hidden/i, `${name} has no unsafe markup`);
     assert.doesNotMatch(svg, /\son\w+=/i, `${name} has no event handler attributes`);
   }
-  assert.equal(new Set(results).size, 7, 'seven distinct results');
+  assert.equal(new Set(results).size, 8, 'eight distinct results');
 
   for (const bad of ['unknown', '<img src=x onerror=alert(1)>', null, 42, undefined, {}, 'constructor', '__proto__']) {
     assert.equal(avatarSvg(bad), '', `avatarSvg(${String(bad)})`);
