@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-factory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gamified landing page that grows as the AI software factory ships features.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/"
+  }
+}
