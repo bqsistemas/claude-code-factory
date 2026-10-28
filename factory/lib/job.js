@@ -339,6 +339,28 @@ function finishIfPrMerged(c, job, note, waitingHint = '') {
   finish(c, job, 'merged', note);
 }
 
+/** Refuses unless job.pr is CLOSED (not merged) on GitHub; then comments and finishes the job as rejected. */
+function finishIfPrClosed(c, job) {
+  if (!job.pr) throw new Refused('the job has no PR');
+  const { state } = JSON.parse(gh(c, ['pr', 'view', String(job.pr), '--json', 'state']));
+  if (state === 'MERGED') throw new Refused(`PR #${job.pr} is MERGED; run: factory/bin/job ${job.id} to merged`);
+  if (state !== 'CLOSED') throw new Refused(`PR #${job.pr} is ${state}, not CLOSED`);
+  ghWithBody(c, ['issue', 'comment', String(job.issue)],
+    `${marker('note', job.id)}\nPR #${job.pr} was closed without merging, so the factory stopped job \`${job.id}\`.\n`);
+  finish(c, job, 'rejected', `PR #${job.pr} closed without merging`);
+}
+
+/** True when a trusted reviewer's latest APPROVED/CHANGES_REQUESTED/DISMISSED review is CHANGES_REQUESTED. */
+function changesRequested(c, job) {
+  const { reviews } = JSON.parse(gh(c, ['pr', 'view', String(job.pr), '--json', 'reviews']));
+  const latest = new Map();
+  (reviews ?? []).map((r, i) => ({ r, i, at: Date.parse(r.submittedAt) }))
+    .filter(({ r }) => TRUSTED.has(r.authorAssociation) && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(r.state))
+    .sort((a, b) => (Number.isNaN(a.at) || Number.isNaN(b.at) ? a.i - b.i : a.at - b.at || a.i - b.i))
+    .forEach(({ r }) => latest.set(login(r.author), r.state));
+  return [...latest.values()].includes('CHANGES_REQUESTED');
+}
+
 function reworkNote(c, job) {
   const data = JSON.parse(gh(c, ['pr', 'view', String(job.pr), '--json', 'reviews,comments']));
   const all = [
@@ -487,6 +509,9 @@ const TRANSITIONS = {
   'awaiting-merge>merged'(c, job) {
     finishIfPrMerged(c, job, `PR #${job.pr} merged outside the factory`, '; still waiting for a reviewer to merge it');
   },
+  'awaiting-merge>rejected'(c, job) { finishIfPrClosed(c, job); },
+  'approve>rejected'(c, job) { finishIfPrClosed(c, job); },
+  'needs-human>rejected'(c, job) { finishIfPrClosed(c, job); },
 };
 
 function toNeedsHuman(c, job, note) {
@@ -507,7 +532,15 @@ function toNeedsHuman(c, job, note) {
     }
   }
   if (!ESCALATABLE.includes(job.stage)) throw new Refused(`${job.stage} → needs-human is not allowed`);
-  if (!note?.trim()) throw new Refused('needs-human needs --note <reason>');
+  if (!note?.trim()) {
+    if (!['awaiting-merge', 'approve'].includes(job.stage) || !job.pr) throw new Refused('needs-human needs --note <reason>');
+    if (!changesRequested(c, job)) {
+      throw new Refused(`needs-human needs --note <reason>; no changes requested on PR #${job.pr} by the repo owner, a member or a collaborator`);
+    }
+    refreshFromFiles(c, job);
+    escalate(c, job, `changes requested on PR #${job.pr}`);
+    return;
+  }
   refreshFromFiles(c, job);
   escalate(c, job, note.trim());
 }

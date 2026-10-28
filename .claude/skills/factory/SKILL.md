@@ -73,7 +73,8 @@ factory/
 - `/factory <feature>`: write the request to a temp file, run
   `gh issue create --title "<short title>" --body-file <file> --label factory`, then
   run that issue as `/factory issue <n>`.
-- `/factory rework <n>`: the job for issue `<n>` is in `needs-human`.
+- `/factory rework <n>`: the job for issue `<n>` is in `needs-human`. It may have been
+  parked by a "Request changes" review (note `changes requested on PR #<n>`).
   - With a PR: run `factory/bin/job <id> to build`. It quotes the PR's review
     comments from the repo owner, members and collaborators into
     `round-N/review-human.md`. Then continue the job at **build**.
@@ -105,8 +106,11 @@ job to `merged`.
    `factory/bin/job new <n>` for each issue. It prints the job id and is idempotent,
    so existing jobs keep theirs. A refusal means the issue isn't open or labeled.
 2. Parked jobs: for every `needs-info` job try `job <id> to intake`, and for every
-   `approve`, `needs-human` or `awaiting-merge` job try `job <id> to merged`. A refusal
-   just means "still waiting". This runs before any approver is spawned, so a PR
+   `approve`, `needs-human` or `awaiting-merge` job try `job <id> to merged`. If that is
+   refused, try `job <id> to rejected` (the PR was closed without merging). If that is
+   also refused and the stage is `approve` or `awaiting-merge`, try
+   `job <id> to needs-human` with no `--note` (a trusted "Request changes" review on the
+   PR). A refusal just means "still waiting". This runs before any approver is spawned, so a PR
    merged by hand while the job sat in `approve` is caught without an agent.
 3. Advance up to `concurrency` active jobs (stages `intake` to `merging`), oldest id
    first. A job resumes from its `stage` in `job.json` (see **Stages**). When one
@@ -152,7 +156,7 @@ Run each step with `factory/bin/job`. It checks the files and refuses (exit 1,
 
 - **intake**: spawn `intake`. Then `job <id> to spec` (ACCEPT: it comments on the
   issue, routes the agents and creates the worktree), `to needs-info` or
-  `to rejected`.
+  `to rejected`. `rejected` also comes from a PR closed without merging.
 - **spec**: spawn `spec-writer`. Then `job <id> to build`.
 - **build**: the builder is one named agent per job, `builder-<id>`, with
   `model` = `agents.builder`.
@@ -188,8 +192,9 @@ Run each step with `factory/bin/job`. It checks the files and refuses (exit 1,
   - `ESCALATE`: `job <id> to needs-human`. The PR is marked ready, `decision.md` is
     posted on it, and the issue gets `factory:needs-human`.
 - **awaiting-merge**: no agent runs. The next `/factory run` moves the job to `merged`
-  once the PR is merged. A human can park it with
-  `job <id> to needs-human --note "<reason>"`, for example when the PR was closed.
+  once the PR is merged, to `rejected` when it is closed without merging, and to
+  `needs-human` when a trusted reviewer requested changes. A human can also park it with
+  `job <id> to needs-human --note "<reason>"`.
 - **merging** left over from a crash: `job <id> to needs-human --note "merge interrupted"`.
 
 Report each job that reaches `merged`, `awaiting-merge`, `needs-human`, `needs-info` or `rejected` in
