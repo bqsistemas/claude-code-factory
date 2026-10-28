@@ -9,6 +9,14 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "build:game": "esbuild src/game/main.jsx --bundle --format=esm --minify --jsx=automatic --define:process.env.NODE_ENV=\\\"production\\\" --outfile=public/game.js"
+  },
+  "devDependencies": {
+    "@remotion/player": "4.0.539",
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "remotion": "4.0.539"
   }
 }
