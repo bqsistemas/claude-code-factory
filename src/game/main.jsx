@@ -6,6 +6,7 @@ import { Player } from '@remotion/player';
 
 import { AVATARS } from '../../factory/avatars.js';
 import { FactoryLoop } from './FactoryLoop.jsx';
+import { ScenarioPicker } from './ScenarioPicker.js';
 import { StaticOctopus } from './StaticOctopus.js';
 import { HUD_HEIGHT, WIDE, captionContent, splitColumns } from './layout.js';
 import { compositionSize } from './scene.js';
@@ -347,7 +348,7 @@ function TourScreen({ onExit, audio }) {
       clearTimeout(timer);
       stopPhrase();
     };
-  }, [tour.index, tour.playing, reduced, startPhrase, stopPhrase]);
+  }, [tour.index, tour.playing, tour.scenario, reduced, startPhrase, stopPhrase]);
 
   // Leaving the tour ("Salir del loop") silences it and releases the audio device.
   useEffect(
@@ -361,13 +362,15 @@ function TourScreen({ onExit, audio }) {
   // A selected station shows fully lit, paused, without its phrase.
   const onSelect = useCallback(
     (i) => {
-      setTour((t) => selectStep(t, stepForStation(i)));
+      const found = stepForStation(i, tour.scenario);
+      if (found < 0) return;
+      setTour((t) => selectStep(t, found));
       const player = playerRef.current;
       player?.pause();
       player?.seekTo(reduced ? TOUR_FRAMES - 1 : SELECT_FRAME);
       stopPhrase();
     },
-    [reduced, stopPhrase],
+    [reduced, stopPhrase, tour.scenario],
   );
 
   const onToggleSound = () => {
@@ -390,7 +393,7 @@ function TourScreen({ onExit, audio }) {
         <Player
           ref={playerRef}
           component={FactoryLoop}
-          inputProps={{ stepIndex: tour.index, onSelect, pipeline: true, split }}
+          inputProps={{ stepIndex: tour.index, onSelect, pipeline: true, split, scenario: tour.scenario }}
           durationInFrames={TOUR_PLAYER_FRAMES}
           loop
           fps={30}
@@ -430,6 +433,7 @@ function TourScreen({ onExit, audio }) {
           />
           <IconButton label="Salir del loop" onClick={onExit} icon={ICONS.exit} />
         </div>
+        <ScenarioPicker value={tour.scenario} onChange={(id) => setTour(createTour(id))} />
       </div>
     </section>
   );

@@ -720,8 +720,8 @@ describe('job 010: living factory pipeline', () => {
     assert.match(loop, /import\s*\{[^}]*\bpackageAt\b[^}]*\}\s*from\s*'\.\/pipeline\.js'/, 'FactoryLoop imports packageAt');
     const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
     assert.match(sceneImport, /\bTRACKS\b/, 'FactoryLoop imports TRACKS from ./scene.js');
-    assert.match(main, /inputProps=\{\{\s*stepIndex:\s*tour\.index,\s*onSelect,\s*pipeline:\s*true,\s*split\s*\}\}/, 'the tour Player passes stepIndex: tour.index');
-    assert.match(main, /stepForStation\(i\)/, 'a station click selects stepForStation(i)');
+    assert.match(main, /inputProps=\{\{\s*stepIndex:\s*tour\.index,\s*onSelect,\s*pipeline:\s*true,\s*split,\s*scenario:\s*tour\.scenario\s*\}\}/, 'the tour Player passes stepIndex: tour.index');
+    assert.match(main, /stepForStation\(i,\s*tour\.scenario\)/, 'a station click selects stepForStation(i, tour.scenario)');
     assert.ok(topLevel(main, 'DockCaption').includes('Condición'), 'DockCaption renders Condición');
   });
 
