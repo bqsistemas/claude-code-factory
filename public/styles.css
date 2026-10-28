@@ -10,6 +10,16 @@
   --color-magenta: #ff5ad9;     /* 7.1:1 */
   --color-green: #39ff88;       /* 14.6:1 */
   --color-track: #2a3150;
+  /* Iso-glow factory floor (/game): a monochrome hairline drawing where only
+     what is live takes the one accent. --iso-ink is 8.6:1 on --iso-deck. */
+  --iso-body: #121626;
+  --iso-deck: #171c30;
+  --iso-line: #3f4a6b;
+  --iso-detail: #283049;
+  --iso-ink: #a9b4d0;
+  --iso-accent: var(--color-cyan);
+  --iso-accent-hi: #9ef6ff;
+  --iso-accent-dim: #0b4a57;
   --font-game: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", "Courier New", monospace;
   --radius: 4px;
   --space: 1rem;
@@ -186,6 +196,30 @@ main {
   margin-left: auto;
   color: var(--color-green);
   font-weight: 700;
+}
+
+/* The ISO-GLOW credit: small and muted, so the HUD keeps its layout. */
+.iso-credit {
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-underline-offset: 0.2em;
+}
+
+.iso-credit:hover,
+.iso-credit:focus-visible {
+  color: var(--color-cyan);
+}
+
+/* Narrow screens: no room on the HUD row, so the credit hangs just under its
+   right end instead of wrapping the HUD onto a second line. */
+@media (max-width: 40rem) {
+  .game-page .iso-credit {
+    position: absolute;
+    top: 100%;
+    right: var(--space);
+  }
 }
 
 .game {
@@ -426,7 +460,7 @@ main {
   gap: 0.25rem 1rem;
 }
 
-/* Question screens: the 3D factory scene fills the viewport behind the HUD and
+/* Question screens: the factory scene fills the viewport behind the HUD and
    the quiz. The Player inside it is sized to the viewport's aspect ratio. */
 .game__scene {
   position: fixed;
@@ -435,8 +469,8 @@ main {
   pointer-events: none;
 }
 
-/* Remotion and three.js set inline pointer-events: auto on some of their
-   elements; the scene must never take clicks or focus from the quiz. */
+/* Remotion sets inline pointer-events: auto on some of its elements; the
+   scene must never take clicks or focus from the quiz. */
 .game__scene * {
   pointer-events: none !important;
 }
@@ -520,6 +554,93 @@ main {
     margin-top: 50vh;
     margin-top: 50dvh;
   }
+}
+
+/* Iso-glow factory floor: opaque faces with hairline strokes that stay one
+   pixel wide at any scale, and the accent only on live parts (.iso-hot).
+   The .iso-label font size mirrors FLOOR.labelSize in src/game/scene.js. */
+.iso-scene .iso-face {
+  fill: var(--iso-body);
+  stroke: var(--iso-line);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.iso-scene .iso-face--top {
+  fill: var(--iso-deck);
+}
+
+.iso-scene .iso-detail {
+  fill: none;
+  stroke: var(--iso-detail);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Labels get a background-colored outline painted under the glyphs, so the
+   hairlines they cross never cut through the text. */
+.iso-scene .iso-label {
+  fill: var(--iso-ink);
+  stroke: var(--color-bg);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  paint-order: stroke;
+  font-family: var(--font-game);
+  font-size: 12px;
+  vector-effect: non-scaling-stroke;
+}
+
+.iso-scene .iso-wire {
+  fill: none;
+  stroke: var(--iso-line);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.iso-scene .iso-led {
+  fill: var(--iso-detail);
+}
+
+.iso-scene .iso-halo {
+  fill: var(--iso-accent);
+  opacity: 0.6;
+}
+
+/* A dash of light on a path with pathLength="1000"; FactoryLoop moves it by
+   setting stroke-dashoffset from the Remotion frame (no CSS animation). */
+.iso-scene .iso-pulse {
+  fill: none;
+  stroke: var(--iso-accent-hi);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 70 1200;
+  vector-effect: non-scaling-stroke;
+}
+
+.iso-scene .iso-face.iso-hot {
+  fill: var(--iso-accent-dim);
+  stroke: var(--iso-accent);
+}
+
+.iso-scene .iso-face--top.iso-hot {
+  stroke: var(--iso-accent-hi);
+}
+
+.iso-scene .iso-wire.iso-hot {
+  stroke: var(--iso-accent);
+  stroke-width: 2;
+}
+
+.iso-scene .iso-led.iso-hot {
+  fill: var(--iso-accent-hi);
+}
+
+.iso-scene .iso-label.iso-hot {
+  fill: var(--iso-accent);
+  font-weight: 700;
 }
 
 .visually-hidden {

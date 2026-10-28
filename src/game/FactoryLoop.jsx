@@ -1,20 +1,16 @@
-// Remotion composition: a real-time 3D factory floor. Each stage is a station on
-// a conveyor, the job package rides the belt to the current stage, and every
-// agent stands at its station as a 3D octopus. An HTML caption in the top-left
-// corner keeps the stage, agents, models, and output file readable as text, and
-// HTML labels over the canvas name each station and the rework loop.
-// Caption and label styles are React style objects (applied through the CSSOM, allowed by
-// the CSP) and reuse the page's :root custom properties, with fallbacks.
-import { Component, useLayoutEffect } from 'react';
-import { useThree } from '@react-three/fiber';
-import { ThreeCanvas } from '@remotion/three';
+// Remotion composition: the factory floor as an iso-glow figure. A dark
+// isometric hairline drawing (SVG) of every station in the loop, where only what
+// is live glows in the accent color: the current station, its agents, and the
+// belt the job package rides in on. An HTML caption in the top-left corner keeps
+// the stage, agents, models, and output file readable as text.
+// Colors come from CSS classes and :root tokens in styles.css (never a style element:
+// the CSP blocks it). Caption styles are React style objects (applied through the
+// CSSOM, allowed by the CSP) and reuse the page's :root custom properties.
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
-import { CatmullRomCurve3, Vector3 } from 'three';
 
 import { STAGES } from './engine.js';
 import { Octopus } from './Octopus.jsx';
-import { Octopus3D } from './Octopus3D.jsx';
-import { STATIONS, cameraFor, cameraFov, packagePosition, projectPoint, toScreen } from './scene.js';
+import { FLOOR, FLOOR_VIEWBOX, PLATE, REWORK_POINTS, STATIONS, iso, labelAnchor, packagePosition } from './scene.js';
 
 const color = {
   bg: 'var(--color-bg, #0b0d17)',
@@ -27,25 +23,16 @@ const color = {
 };
 const font = 'var(--font-game, ui-monospace, Menlo, Consolas, monospace)';
 
-// three.js cannot read CSS custom properties, so the scene uses their values.
-const hex = {
-  bg: '#0b0d17',
-  floor: '#151a2e',
-  track: '#2a3150',
-  belt: '#3a4466',
-  cyan: '#00e5ff',
-  magenta: '#ff5ad9',
-  box: '#c8955a',
-  tape: '#fff7d6',
-};
-
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' };
 const ease = Easing.inOut(Easing.cubic);
 
-// Timeline (30 fps): the camera glides to the current station, then the
-// package rides in; everything holds still from frame 75 to the end.
-const CAMERA_FRAMES = [0, 45];
+// Timeline (30 fps): the current station lights up, then the package rides in
+// from the previous station with a light pulse running ahead of it on the belt;
+// everything holds still from frame 75 to the end.
+const LIT_FRAMES = [0, 15];
 const PACKAGE_FRAMES = [15, 75];
+// The pulse is a 70-unit dash on a path with pathLength 1000 (see .iso-pulse).
+const PULSE_OFFSETS = [70, -1000];
 
 // Layout breakpoint and docked panel size, mirrored from styles.css
 // (min-width: 64rem; width: min(32rem, 40vw); bottom dock up to 45dvh).
@@ -53,304 +40,306 @@ const WIDE = 1024;
 const panelWidth = (width) => Math.min(512, 0.4 * width) + 16;
 const BOTTOM_PANEL = 0.45;
 const HUD_HEIGHT = 56;
+const MARGIN = 16;
 
 // Where things go on screen: the caption box in the top-left corner and the
-// current station centered in the free area between the caption and the panel
-// (to the left of a right-docked panel, or above a bottom-docked one).
+// floor drawing in the free area below it, left of a right-docked panel or above
+// a bottom-docked one.
 function screenLayout(stage, width, height) {
   const unit = Math.min(1.25, Math.max(0.75, Math.min(width, height) / 720));
   const wide = width >= WIDE;
   const captionTop = HUD_HEIGHT + 8;
-  const captionWidth = Math.min((wide ? width - panelWidth(width) : width) - 32, 760 * unit);
+  const freeRight = wide ? width - panelWidth(width) : width;
+  const captionWidth = Math.min(freeRight - 2 * MARGIN, 760 * unit);
   // Rough caption height: heading lines plus one row per two or three chips.
   const perRow = Math.max(1, Math.floor(captionWidth / (260 * unit)));
   const rows = stage.agents.length === 0 ? 0.6 : Math.ceil(stage.agents.length / perRow);
   const captionBottom = captionTop + (115 + rows * 42) * unit;
   const freeBottom = wide ? height : height * (1 - BOTTOM_PANEL);
+  const top = captionBottom + 8;
   return {
     unit,
     captionTop,
     captionWidth,
-    centerX: wide ? (width - panelWidth(width)) / 2 : width / 2,
-    centerY: captionBottom + (freeBottom - captionBottom) * 0.5,
+    scene: {
+      left: MARGIN,
+      top,
+      width: Math.max(1, freeRight - 2 * MARGIN),
+      height: Math.max(1, freeBottom - MARGIN - top),
+    },
   };
 }
 
-const PLATFORM_DEPTH = 2.2;
-// Station labels float above the octopus heads (an active octopus is about 2.2 tall).
-const LABEL_Y = 3.1;
-// How far behind the stations the rework belt runs, so its label sits above the
-// station labels on screen instead of on top of them.
-const REWORK_BACK = 5.2;
-const AGENT_GAP = 1.1;
-const platformWidth = (stage) => Math.max(2.2, stage.agents.length * AGENT_GAP + 0.4);
+// --- Iso kernel (iso-figure, MIT) ----------------------------------------------
 
-// --- WebGL detection -------------------------------------------------------
+const num = (v) => Math.round(v * 1000) / 1000;
+const at = (point) => iso(point).map(num);
 
-let webglSupport;
-/** True when the browser can create a WebGL context; checked once. */
-function hasWebGL() {
-  if (webglSupport === undefined) {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
-      webglSupport = Boolean(gl);
-      gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    } catch {
-      webglSupport = false;
-    }
-  }
-  return webglSupport;
+// A face plane: local x runs along U, local y along V, origin at O. Ordinary
+// rects, lines, and text drawn inside land on that plane.
+const plane = (origin, u, v) => {
+  const [ox, oy] = iso(origin);
+  const [ux, uy] = iso(u);
+  const [vx, vy] = iso(v);
+  return `matrix(${[ux, uy, vx, vy, ox, oy].map(num).join(' ')})`;
+};
+const TOP = (x, y, z) => plane([x, y, z], [1, 0, 0], [0, 1, 0]);
+const FRONT = (x, y, z) => plane([x, y, z], [1, 0, 0], [0, 0, -1]); // y = max face, lower-left
+const SIDE = (x, y, z) => plane([x, y, z], [0, -1, 0], [0, 0, -1]); // x = max face, lower-right
+
+const pathOf = (points) => `M${points.map((p) => at(p).join(' ')).join('L')}`;
+
+const cx = (...names) => names.filter(Boolean).join(' ');
+
+// A box is its three visible faces, each an opaque rect on its plane.
+function IsoBox({ position: [x, y, z], size: [w, d, h], className }) {
+  return (
+    <g>
+      <rect transform={SIDE(x + w, y + d, z + h)} width={d} height={h} className={cx('iso-face', className)} />
+      <rect transform={FRONT(x, y + d, z + h)} width={w} height={h} className={cx('iso-face', className)} />
+      <rect transform={TOP(x, y, z + h)} width={w} height={d} className={cx('iso-face iso-face--top', className)} />
+    </g>
+  );
 }
 
-// If the renderer still fails (lost GPU, blocked context), drop the 3D layer and
-// keep the caption and the quiz working.
-class SceneBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { failed: false };
-  }
+// --- Floor parts -----------------------------------------------------------------
 
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
-}
-
-// --- 3D scene ----------------------------------------------------------------
-
-const lerp3 = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
-
-// The camera for the current frame: on its way from the previous station's
-// view (progress 0) to the current one (progress 1).
-function cameraView(stageIndex, progress) {
-  const from = cameraFor(stageIndex - 1);
-  const to = cameraFor(stageIndex);
-  return {
-    position: lerp3(from.position, to.position, progress),
-    target: lerp3(from.target, to.target, progress),
+function Filters() {
+  // Filters use userSpaceOnUse so perfectly straight lines (zero-height boxes)
+  // still glow; the region covers the whole viewBox with room for the blur.
+  const region = {
+    x: num(FLOOR_VIEWBOX.x - 100),
+    y: num(FLOOR_VIEWBOX.y - 100),
+    width: num(FLOOR_VIEWBOX.width + 200),
+    height: num(FLOOR_VIEWBOX.height + 200),
   };
-}
-
-// Places the three.js camera at the given view and shifts it so the station
-// lands in the part of the screen the docked quiz panel leaves free. The labels
-// project with the same view and fov, so they stay on their stations.
-function CameraRig({ view, fov, width, height, centerX, centerY }) {
-  const camera = useThree((s) => s.camera);
-  const invalidate = useThree((s) => s.invalidate);
-  const [px, py, pz] = view.position;
-  const [tx, ty, tz] = view.target;
-  useLayoutEffect(() => {
-    camera.position.set(px, py, pz);
-    camera.lookAt(tx, ty, tz);
-    camera.fov = fov;
-    camera.setViewOffset(width, height, width / 2 - centerX, height / 2 - centerY, width, height);
-    camera.updateProjectionMatrix();
-    invalidate();
-  }, [camera, invalidate, px, py, pz, tx, ty, tz, fov, width, height, centerX, centerY]);
-  return null;
-}
-
-function Station({ stage, position, active, pulse }) {
-  const w = platformWidth(stage);
   return (
-    <group position={position}>
-      <mesh position={[0, 0.2, 0]}>
-        <boxGeometry args={[w, 0.4, PLATFORM_DEPTH]} />
-        <meshStandardMaterial
-          color={active ? '#1d3b52' : hex.track}
-          emissive={active ? hex.cyan : '#000000'}
-          emissiveIntensity={active ? 0.12 + 0.08 * pulse : 0}
-          roughness={0.7}
-        />
-      </mesh>
-      <mesh position={[0, 0.41, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[w + 0.3, PLATFORM_DEPTH + 0.3]} />
-        <meshBasicMaterial color={active ? hex.cyan : hex.belt} transparent opacity={active ? 0.25 : 0.2} />
-      </mesh>
-    </group>
+    <defs>
+      <filter id="iso-glow" filterUnits="userSpaceOnUse" {...region}>
+        <feGaussianBlur stdDeviation="4" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+      <filter id="iso-soft" filterUnits="userSpaceOnUse" {...region}>
+        <feGaussianBlur stdDeviation="2.2" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+      <filter id="iso-bloom" filterUnits="userSpaceOnUse" {...region}>
+        <feGaussianBlur stdDeviation="9" />
+      </filter>
+    </defs>
   );
 }
 
-// A conveyor segment between two stations, laid just under the platforms.
-function Belt({ from, to }) {
-  const dx = to[0] - from[0];
-  const dz = to[2] - from[2];
-  const length = Math.hypot(dx, dz);
+function GroundPlate() {
+  const [x, y, z] = PLATE.position;
+  const [w, d, h] = PLATE.size;
+  const inset = 8;
   return (
-    <mesh position={[(from[0] + to[0]) / 2, 0.12, (from[2] + to[2]) / 2]} rotation={[0, -Math.atan2(dz, dx), 0]}>
-      <boxGeometry args={[length, 0.16, 0.9]} />
-      <meshStandardMaterial color={hex.belt} roughness={0.9} />
-    </mesh>
+    <g>
+      <IsoBox position={PLATE.position} size={PLATE.size} />
+      <g transform={TOP(x, y, z + h)}>
+        <rect className="iso-detail" x={inset} y={inset} width={w - 2 * inset} height={d - 2 * inset} rx="6" />
+      </g>
+    </g>
   );
 }
 
-// Control points of the rework belt, from "wait-for-all" back to "build"; the
-// middle one is where the belt is farthest back, and where its label goes.
-function reworkPoints() {
-  const from = STATIONS.find((s) => s.id === 'wait-for-all').position;
-  const to = STATIONS.find((s) => s.id === 'build').position;
-  const back = Math.min(from[2], to[2], 0) - REWORK_BACK;
-  const edge = PLATFORM_DEPTH / 2 + 0.1;
-  return [
-    [from[0], 0.08, from[2] - edge],
-    [from[0] - 0.3, 0.08, back],
-    [(from[0] + to[0]) / 2, 0.08, back - 0.3],
-    [to[0] + 0.3, 0.08, back],
-    [to[0], 0.08, to[2] - edge - 0.5],
+// Dashed hairline behind the stations, from "wait-for-all" back to "build": the
+// rework loop when a reviewer asks for changes. The arrowhead points into "build".
+function ReworkLoop() {
+  const end = REWORK_POINTS[REWORK_POINTS.length - 1];
+  const arrow = [
+    [end[0] - 5, end[1] - 8, 0],
+    end,
+    [end[0] + 5, end[1] - 8, 0],
   ];
+  // The label stands on the FRONT plane of the loop's back segment, riding just
+  // above the dashed line, so the line never crosses it.
+  const [, back] = REWORK_POINTS;
+  const mid = (REWORK_POINTS[1][0] + REWORK_POINTS[2][0]) / 2;
+  return (
+    <g>
+      <path d={pathOf(REWORK_POINTS)} className="iso-wire" strokeDasharray="6 5" />
+      <path d={pathOf(arrow)} className="iso-wire" />
+      <g transform={FRONT(mid, back[1], 0)}>
+        <text x={0} y={-4} textAnchor="middle" className="iso-label">
+          Retrabajo: cambios pedidos
+        </text>
+      </g>
+    </g>
+  );
 }
 
-// Dashed magenta return belt behind the stations, from "wait-for-all" back to
-// "build": the rework loop when a reviewer asks for changes.
-function ReworkBelt() {
-  const curve = new CatmullRomCurve3(reworkPoints().map((p) => new Vector3(...p)));
-  const dashes = 18;
-  const tip = curve.getPointAt(1);
+// The belt from a station to the next one: a flat strip at deck height, with an
+// edge strip on its front and roller hairlines across it.
+function Belt({ from, to }) {
+  const x = from.position[0] + from.size[0];
+  const length = to.position[0] - x;
+  const [y0, y1] = FLOOR.lane;
+  const z = from.size[2];
   return (
-    <group>
-      {Array.from({ length: dashes }, (_, i) => {
-        const t = (i + 0.5) / dashes;
-        const p = curve.getPointAt(t);
-        const tangent = curve.getTangentAt(t);
+    <g>
+      <rect transform={FRONT(x, y1, z)} width={length} height={4} className="iso-face" />
+      <rect transform={TOP(x, y0, z)} width={length} height={y1 - y0} className="iso-face iso-face--top" />
+      <g transform={TOP(x, y0, z)}>
+        {Array.from({ length: Math.floor(length / 8) - 1 }, (_, k) => (
+          <line key={k} className="iso-detail" x1={(k + 1) * 8} y1={3} x2={(k + 1) * 8} y2={y1 - y0 - 3} />
+        ))}
+      </g>
+    </g>
+  );
+}
+
+// One agent pod: a small box on the back of the deck with an LED on its front.
+function Pod({ position, lit }) {
+  const [px, py, pz] = position;
+  const [w, d, h] = FLOOR.podSize;
+  const led = FRONT(px, py + d, pz + h);
+  return (
+    <g>
+      <IsoBox position={position} size={FLOOR.podSize} />
+      <rect transform={led} x={3} y={3} width={w - 6} height={3} className="iso-led" />
+      {lit > 0 && (
+        <g opacity={lit} filter="url(#iso-glow)">
+          <rect transform={led} x={3} y={3} width={w - 6} height={3} className="iso-led iso-hot" />
+        </g>
+      )}
+    </g>
+  );
+}
+
+// A station box with its agent pods. The current one fades to lit: a bloom halo
+// behind the deck, an accent deck and front lip, and lit LEDs on its pods.
+function Station({ station, stage, lit }) {
+  const { position, size } = station;
+  const [x, y] = position;
+  const [w, d, h] = size;
+  const halo = 14;
+  return (
+    <g>
+      {lit > 0 && (
+        <g opacity={lit} filter="url(#iso-bloom)">
+          <rect
+            transform={TOP(x - halo, y - halo, h)}
+            width={w + 2 * halo}
+            height={d + 2 * halo}
+            rx="10"
+            className="iso-halo iso-hot"
+          />
+        </g>
+      )}
+      <IsoBox position={position} size={size} />
+      <g transform={FRONT(x, y + d, h)}>
+        <line className="iso-detail" x1={0} y1={5} x2={w} y2={5} />
+      </g>
+      {lit > 0 && (
+        <g opacity={lit}>
+          <g filter="url(#iso-soft)">
+            <rect transform={TOP(x, y, h)} width={w} height={d} className="iso-face iso-face--top iso-hot" />
+          </g>
+          <g transform={FRONT(x, y + d, h)} filter="url(#iso-soft)">
+            <line className="iso-wire iso-hot" x1={0} y1={5} x2={w} y2={5} />
+          </g>
+        </g>
+      )}
+      {stage.agents.map((agent, k) => (
+        <Pod
+          key={agent.name}
+          position={[x + FLOOR.podInset + k * FLOOR.podPitch, y + FLOOR.podInset, h]}
+          lit={lit}
+        />
+      ))}
+    </g>
+  );
+}
+
+// The belt into the current station as a lit wire along the package's lane, with
+// a light pulse running ahead of the package.
+function LitBelt({ from, to, lit, pulseOffset }) {
+  const [ox, oy, oz] = FLOOR.packageOffset;
+  const lane = oy + FLOOR.packageSize / 2;
+  const mid = FLOOR.packageSize / 2;
+  const d = pathOf([
+    [from.position[0] + ox + mid, lane, oz],
+    [to.position[0] + ox + mid, lane, oz],
+  ]);
+  return (
+    <g>
+      <g opacity={lit} filter="url(#iso-soft)">
+        <path d={d} className="iso-wire iso-hot" />
+      </g>
+      <g filter="url(#iso-glow)">
+        <path d={d} pathLength="1000" strokeDashoffset={pulseOffset} className="iso-pulse" />
+      </g>
+    </g>
+  );
+}
+
+// The job package: a small lit box with a tape line across its top.
+function JobPackage({ position }) {
+  const s = FLOOR.packageSize;
+  const [x, y, z] = position.map((v, k) => v + FLOOR.packageOffset[k]);
+  return (
+    <g>
+      <IsoBox position={[x, y, z]} size={[s, s, s]} className="iso-hot" />
+      <g transform={TOP(x, y, z + s)}>
+        <line className="iso-wire" x1={s / 2} y1={0} x2={s / 2} y2={s} />
+      </g>
+    </g>
+  );
+}
+
+// Paint order is the only depth sort: back to front, smaller x + y first.
+const PAINT_ORDER = STATIONS.map((_, i) => i).sort((a, b) => {
+  const depth = (i) => STATIONS[i].position[0] + STATIONS[i].position[1];
+  return depth(a) - depth(b);
+});
+
+function IsoFloor({ active, frame, box }) {
+  const current = STAGES[active];
+  const lit = interpolate(frame, LIT_FRAMES, [0, 1], clamp);
+  const progress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
+  const pulseOffset = interpolate(frame, PACKAGE_FRAMES, PULSE_OFFSETS, clamp);
+  const { x, y, width, height } = FLOOR_VIEWBOX;
+  return (
+    <svg
+      className="iso-scene"
+      role="img"
+      aria-label={`Planta del factory: etapa ${active + 1} de ${STAGES.length}, ${current.title}`}
+      viewBox={[x, y, width, height].map(num).join(' ')}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ position: 'absolute', ...box }}
+    >
+      <Filters />
+      <GroundPlate />
+      <ReworkLoop />
+      {PAINT_ORDER.map((i) => (
+        <g key={STATIONS[i].id}>
+          <Station station={STATIONS[i]} stage={STAGES[i]} lit={i === active ? lit : 0} />
+          {i + 1 < STATIONS.length && <Belt from={STATIONS[i]} to={STATIONS[i + 1]} />}
+        </g>
+      ))}
+      {active > 0 && <LitBelt from={STATIONS[active - 1]} to={STATIONS[active]} lit={lit} pulseOffset={pulseOffset} />}
+      {/* The package rides at deck height in the front lane. Stations are no taller
+          than their decks, and pods stand at the back of a deck, so nothing is ever
+          in front of it: it is painted after every station. */}
+      <JobPackage position={packagePosition(active, progress)} />
+      {STAGES.map((stage, i) => {
+        const [lx, ly] = at(labelAnchor(i));
         return (
-          <mesh key={i} position={[p.x, p.y, p.z]} rotation={[0, -Math.atan2(tangent.z, tangent.x), 0]}>
-            <boxGeometry args={[0.45, 0.06, 0.18]} />
-            <meshStandardMaterial color={hex.magenta} emissive={hex.magenta} emissiveIntensity={0.6} />
-          </mesh>
+          <text key={stage.id} x={lx} y={ly} textAnchor="end" className={cx('iso-label', i === active && 'iso-hot')}>
+            {`${i + 1} · ${stage.title}`}
+          </text>
         );
       })}
-      <mesh position={[tip.x, 0.15, tip.z + 0.1]} rotation={[Math.PI / 2, 0, 0]}>
-        <coneGeometry args={[0.25, 0.5, 12]} />
-        <meshStandardMaterial color={hex.magenta} emissive={hex.magenta} emissiveIntensity={0.6} />
-      </mesh>
-    </group>
-  );
-}
-
-function JobPackage({ position, hop }) {
-  return (
-    <group position={[position[0], 0.75 + 0.25 * hop, position[2] + 0.35]}>
-      <mesh>
-        <boxGeometry args={[0.6, 0.6, 0.6]} />
-        <meshStandardMaterial color={hex.box} roughness={0.8} />
-      </mesh>
-      <mesh>
-        <boxGeometry args={[0.62, 0.12, 0.62]} />
-        <meshStandardMaterial color={hex.tape} roughness={0.5} />
-      </mesh>
-    </group>
-  );
-}
-
-function FactoryFloor({ stageIndex, frame, width, height, layout, view, fov }) {
-  const packageProgress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
-  // The package hops while it moves and settles when it arrives.
-  const hop = packageProgress > 0 && packageProgress < 1 ? Math.abs(Math.sin(packageProgress * Math.PI * 3)) : 0;
-  const pulse = 0.5 + 0.5 * Math.sin((frame / 30) * Math.PI);
-
-  return (
-    <>
-      <color attach="background" args={[hex.bg]} />
-      <fog attach="fog" args={[hex.bg, 22, 50]} />
-      <ambientLight intensity={0.55} />
-      <hemisphereLight args={['#b8c6ff', hex.floor, 0.6]} />
-      <directionalLight position={[6, 12, 8]} intensity={1.6} />
-      <CameraRig
-        view={view}
-        fov={fov}
-        width={width}
-        height={height}
-        centerX={layout.centerX}
-        centerY={layout.centerY}
-      />
-
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, -4]}>
-        <planeGeometry args={[80, 50]} />
-        <meshStandardMaterial color={hex.floor} roughness={1} />
-      </mesh>
-      <gridHelper args={[80, 40, hex.track, '#1b2140']} position={[0, 0, -4]} />
-
-      {STATIONS.slice(1).map((station, i) => (
-        <Belt key={station.id} from={STATIONS[i].position} to={station.position} />
-      ))}
-      <ReworkBelt />
-
-      {STAGES.map((stage, i) => (
-        <Station key={stage.id} stage={stage} position={STATIONS[i].position} active={i === stageIndex} pulse={pulse} />
-      ))}
-
-      {STAGES.flatMap((stage, i) => {
-        const [x, , z] = STATIONS[i].position;
-        const first = -((stage.agents.length - 1) * AGENT_GAP) / 2;
-        return stage.agents.map((agent, k) => (
-          <Octopus3D
-            key={agent.name}
-            name={agent.name}
-            position={[x + first + k * AGENT_GAP, 0.4, z - 0.35]}
-            active={i === stageIndex}
-            offset={i * 2 + k}
-          />
-        ));
-      })}
-
-      <JobPackage position={packagePosition(stageIndex, packageProgress)} hop={hop} />
-    </>
-  );
-}
-
-// --- Flow labels ---------------------------------------------------------------
-
-// HTML labels over the canvas: one per station and one on the rework belt, each
-// centered on its 3D anchor projected with the same camera as the scene. They
-// repeat what the caption and the quiz panel already say, so screen readers skip them.
-function FlowLabels({ stageIndex, view, fov, width, height, layout }) {
-  const { unit, centerX, centerY } = layout;
-  const place = (point) => {
-    const ndc = projectPoint(view, point, fov, width / height);
-    if (!(ndc.depth > 0)) return null;
-    const { x, y } = toScreen(ndc, width, height, centerX, centerY);
-    return x >= 0 && x <= width && y >= 0 && y <= height ? { x, y } : null;
-  };
-  const label = (key, point, text, tone, strong) => {
-    const at = place(point);
-    if (!at) return null;
-    return (
-      <div
-        key={key}
-        style={{
-          position: 'absolute',
-          left: at.x,
-          top: at.y,
-          transform: 'translate(-50%, -50%)',
-          padding: `${3 * unit}px ${8 * unit}px`,
-          background: color.panel,
-          border: `2px solid ${tone}`,
-          borderRadius: 4,
-          color: tone,
-          fontFamily: font,
-          fontSize: 13 * unit,
-          fontWeight: strong ? 700 : 400,
-          lineHeight: 1.2,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {text}
-      </div>
-    );
-  };
-  return (
-    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {STAGES.map((stage, i) => {
-        const [x, y, z] = STATIONS[i].position;
-        const current = i === stageIndex;
-        return label(stage.id, [x, y + LABEL_Y, z], `${i + 1} · ${stage.title}`, current ? color.cyan : color.muted, current);
-      })}
-      {label('rework', reworkPoints()[2], 'Retrabajo: cambios pedidos', color.magenta, false)}
-    </div>
+    </svg>
   );
 }
 
@@ -416,37 +405,11 @@ function Caption({ stage, index, frame, layout }) {
 export function FactoryLoop({ stageIndex }) {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
-  const active = Math.min(Math.max(Number.isFinite(stageIndex) ? stageIndex : 0, 0), STAGES.length - 1);
+  const active = Math.min(Math.max(Number.isFinite(stageIndex) ? Math.trunc(stageIndex) : 0, 0), STAGES.length - 1);
   const layout = screenLayout(STAGES[active], width, height);
-  // One camera and fov per frame, shared by the 3D scene and the labels.
-  const view = cameraView(active, interpolate(frame, CAMERA_FRAMES, [0, 1], { ...clamp, easing: ease }));
-  const fov = cameraFov(width / height);
-  const webgl = hasWebGL();
   return (
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
-      {webgl && (
-        <SceneBoundary>
-          <ThreeCanvas
-            width={width}
-            height={height}
-            dpr={[1, 2]}
-            frameloop="demand"
-            camera={{ fov: 45, near: 0.1, far: 120 }}
-            style={{ pointerEvents: 'none' }}
-          >
-            <FactoryFloor
-              stageIndex={active}
-              frame={frame}
-              width={width}
-              height={height}
-              layout={layout}
-              view={view}
-              fov={fov}
-            />
-          </ThreeCanvas>
-        </SceneBoundary>
-      )}
-      {webgl && <FlowLabels stageIndex={active} view={view} fov={fov} width={width} height={height} layout={layout} />}
+      <IsoFloor active={active} frame={frame} box={layout.scene} />
       <Caption stage={STAGES[active]} index={active} frame={frame} layout={layout} />
     </AbsoluteFill>
   );
