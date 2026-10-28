@@ -2,39 +2,20 @@
 // badge row the dashboard shows for them. Plain ES module: runs in the browser
 // (imported by dashboard.html) and in Node (imported by the tests).
 
-// Inline 16x16 line icons. Fixed strings only: they are the one thing emitted unescaped.
-const svg = (body) =>
-  `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
+import { avatarSvg } from './avatars.js';
+
+// Each agent's icon is its animated octopus from avatars.js: a fixed string built
+// only from constants, the one thing emitted unescaped.
+const agent = (name, label) => Object.freeze({ label, icon: avatarSvg(name) });
 
 export const AGENTS = Object.freeze({
-  'spec-writer': Object.freeze({
-    label: 'Spec writer',
-    icon: svg('<path d="M3 13l1-3.5L10.5 3 13 5.5 6.5 12z"/><path d="M9 4.5L11.5 7"/>'),
-  }),
-  builder: Object.freeze({
-    label: 'Builder',
-    icon: svg('<path d="M2.5 13.5l6-6"/><path d="M7 4.5l2-2 4.5 4.5-2 2z"/>'),
-  }),
-  'review-security': Object.freeze({
-    label: 'Security review',
-    icon: svg('<path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"/>'),
-  }),
-  'review-ux': Object.freeze({
-    label: 'UX review',
-    icon: svg('<circle cx="8" cy="5" r="2.5"/><path d="M3 14c.5-3 2.5-4.5 5-4.5s4.5 1.5 5 4.5"/>'),
-  }),
-  'review-ui': Object.freeze({
-    label: 'UI review',
-    icon: svg('<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 6h11M6 6v7.5"/>'),
-  }),
-  'review-code': Object.freeze({
-    label: 'Code review',
-    icon: svg('<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/>'),
-  }),
-  approver: Object.freeze({
-    label: 'Approver',
-    icon: svg('<circle cx="8" cy="8" r="5.5"/><path d="M5.5 8.2l1.8 1.8 3.2-3.5"/>'),
-  }),
+  'spec-writer': agent('spec-writer', 'Spec writer'),
+  builder: agent('builder', 'Builder'),
+  'review-security': agent('review-security', 'Security review'),
+  'review-ux': agent('review-ux', 'UX review'),
+  'review-ui': agent('review-ui', 'UI review'),
+  'review-code': agent('review-code', 'Code review'),
+  approver: agent('approver', 'Approver'),
 });
 
 const SINGLE = Object.freeze({ spec: 'spec-writer', build: 'builder', approval: 'approver' });

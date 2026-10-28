@@ -100,21 +100,27 @@
 
   .agents { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
   .agent { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
-           font-size: 10.5px; line-height: 16px; padding: 1px 7px 1px 1px; border-radius: 999px;
+           font-size: 10.5px; line-height: 16px; padding: 0 8px 0 2px; border-radius: 999px;
            background: var(--chip-bg); color: var(--ink); border: 1px solid var(--line); }
-  .agent .avatar { flex: none; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
-                   background: var(--ink); color: var(--panel); animation: working 1.6s ease-in-out infinite; }
-  .agent .avatar svg { display: block; width: 10px; height: 10px; }
-  .agent:nth-child(2) .avatar { animation-delay: .2s; }
-  .agent:nth-child(3) .avatar { animation-delay: .4s; }
-  .agent:nth-child(4) .avatar { animation-delay: .6s; }
+  .agent .avatar { flex: none; display: grid; place-items: center; width: 22px; height: 22px; }
+  .agent .avatar svg { display: block; width: 22px; height: 22px; overflow: visible; }
   .agent-label { min-width: 0; overflow-wrap: anywhere; }
-  @keyframes working {
-    0%, 100% { transform: translateY(0); box-shadow: 0 0 0 0 var(--line); }
-    50% { transform: translateY(-1px); box-shadow: 0 0 0 3px var(--line); }
-  }
+  /* Octopus characters from avatars.js: the body bobs, tentacles sway from their
+     top, eyes blink now and then. Small amplitudes, slow loops. */
+  .octo { animation: octo-bob 1.8s ease-in-out infinite; }
+  .octo-tentacle { transform-box: fill-box; transform-origin: 50% 0;
+                   animation: octo-sway 1.6s ease-in-out infinite alternate; }
+  .octo-tentacle:nth-of-type(2n) { animation-delay: -.8s; }
+  .octo-eye { transform-box: fill-box; transform-origin: center; animation: octo-blink 4.8s infinite; }
+  .agent:nth-child(2) .octo, .agent:nth-child(2) .octo-eye { animation-delay: -.45s; }
+  .agent:nth-child(3) .octo, .agent:nth-child(3) .octo-eye { animation-delay: -.9s; }
+  .agent:nth-child(4) .octo, .agent:nth-child(4) .octo-eye { animation-delay: -1.35s; }
+  @keyframes octo-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+  @keyframes octo-sway { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+  @keyframes octo-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
   @media (prefers-reduced-motion: reduce) {
     .agent, .agent .avatar, .chip.pending { animation: none; }
+    .octo, .octo-tentacle, .octo-eye { animation: none; }
   }
 </style>
 </head>

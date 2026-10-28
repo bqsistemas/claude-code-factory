@@ -6,6 +6,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 import { createApp } from '../src/app.js';
+import { AVATARS, OCTOPUS } from '../factory/avatars.js';
 
 const rootDir = fileURLToPath(new URL('..', import.meta.url));
 
@@ -218,5 +219,61 @@ describe('job 002: Remotion factory learning game', () => {
     const loop = await readFile(new URL('../src/game/FactoryLoop.jsx', import.meta.url), 'utf8');
     assert.match(main, /from ['"]@remotion\/player['"]/, 'main.jsx imports @remotion/player');
     assert.match(loop, /from ['"]remotion['"]/, 'FactoryLoop.jsx imports remotion');
+  });
+});
+
+describe('job 004: one-page game with animated octopus agent characters', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+
+  test('AC-5: Octopus.jsx uses the shared avatars and the Remotion frame; FactoryLoop renders it', async () => {
+    const octopus = await read('../src/game/Octopus.jsx');
+    assert.match(octopus, /from\s+'\.\.\/\.\.\/factory\/avatars\.js'/, 'imports ../../factory/avatars.js');
+    assert.match(octopus, /import\s*\{[^}]*\buseCurrentFrame\b[^}]*\}\s*from\s*'remotion'/, 'imports useCurrentFrame from remotion');
+
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    assert.match(loop, /import\s*\{[^}]*\bOctopus\b[^}]*\}\s*from\s*['"]\.\/Octopus\.jsx['"]/, 'FactoryLoop imports Octopus');
+    assert.match(loop, /<Octopus\b/, 'FactoryLoop renders <Octopus');
+  });
+
+  test('AC-6: the committed game bundle carries the shared octopus geometry and colors', async () => {
+    const bundle = await read('../public/game.js');
+    assert.ok(bundle.includes(OCTOPUS.head), 'bundle contains OCTOPUS.head');
+    for (const [name, { color }] of Object.entries(AVATARS)) {
+      assert.ok(bundle.includes(color), `bundle contains ${name} color ${color}`);
+    }
+  });
+
+  test('AC-7: /game is a one-page layout with a scrolling fallback on small viewports', async () => {
+    const html = await (await fetch(`${baseUrl}/game`)).text();
+    assert.match(html, /<body class="game-page">/);
+
+    const css = await (await fetch(`${baseUrl}/styles.css`)).text();
+    const pageRules = [...css.matchAll(/^\.game-page\s*\{([^}]*)\}/gm)].map((m) => m[1]);
+    assert.ok(
+      pageRules.some((body) => /100dvh/.test(body) && /overflow:\s*hidden/.test(body)),
+      '.game-page rule with 100dvh and overflow: hidden',
+    );
+
+    const fallback = css.match(/@media \(max-width: 40rem\), \(max-height: 30rem\)\s*\{([\s\S]*?)\n\}/)?.[1];
+    assert.ok(fallback, 'has the small-viewport fallback media query');
+    const fallbackPage = fallback.match(/\.game-page\s*\{([^}]*)\}/)?.[1];
+    assert.ok(fallbackPage, 'fallback has a .game-page rule');
+    assert.match(fallbackPage, /overflow-y:\s*auto/);
+    assert.match(fallbackPage, /overflow-x:\s*hidden/);
+
+    const main = await read('../src/game/main.jsx');
+    for (const cls of ['game__stage', 'game__media', 'game__quiz']) {
+      assert.match(css, new RegExp(`\\.${cls}\\b[^{]*\\{`), `styles.css has a .${cls} rule`);
+      assert.match(main, new RegExp(`className="${cls}"`), `main.jsx uses ${cls}`);
+    }
+  });
+
+  test('AC-8: the quest log gains the octopus crew item and keeps the earlier ones', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    assert.ok(items.some((li) => li.includes('Meet the octopus agent crew')), 'new quest item');
+    assert.ok(items.some((li) => li.includes('Build the landing page')), 'first quest kept');
+    assert.ok(items.some((li) => li.includes('Play the factory learning game')), 'game quest kept');
   });
 });

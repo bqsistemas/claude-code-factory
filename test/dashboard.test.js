@@ -1,8 +1,9 @@
-import { test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir, readFile } from 'node:fs/promises';
 
 import { AGENTS, activeAgents, agentsHtml } from '../factory/activity.js';
+import { avatarSvg } from '../factory/avatars.js';
 
 const agentsDir = new URL('../.claude/agents/', import.meta.url);
 const dashboardUrl = new URL('../factory/dashboard.html', import.meta.url);
@@ -130,4 +131,38 @@ test('AC-7: dashboard loads activity.js as a module and honours reduced motion',
   assert.ok(reduced, 'has a prefers-reduced-motion: reduce block');
   assert.match(reduced, /\.agent[^{]*\{[^}]*animation:\s*none/, '.agent animation disabled');
   assert.match(reduced, /\.chip\.pending[^{]*\{[^}]*animation:\s*none/, '.chip.pending animation disabled');
+});
+
+describe('job 004: animated octopus agent characters', () => {
+  test('AC-3: every AGENTS icon is the shared octopus and a badge hides it once', () => {
+    for (const name of Object.keys(AGENTS)) {
+      assert.equal(AGENTS[name].icon, avatarSvg(name), `${name} icon is avatarSvg(name)`);
+    }
+    const html = agentsHtml({ stage: 'build' });
+    assert.match(html, /class="octo"/);
+    assert.equal(html.match(/aria-hidden="true"/g)?.length, 1, 'exactly one aria-hidden="true"');
+  });
+
+  test('AC-4: dashboard animates tentacles with defined keyframes and stops them under reduced motion', async () => {
+    const html = await readFile(dashboardUrl, 'utf8');
+    const css = html.match(/<style>([\s\S]*?)<\/style>/)?.[1];
+    assert.ok(css, 'has a <style> block');
+
+    const keyframes = new Set([...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]));
+    const rules = [...css.matchAll(/([^{}]*\.octo-tentacle[^{}]*)\{([^}]*)\}/g)];
+    const animated = rules
+      .map(([, , body]) => body.match(/animation(?:-name)?:\s*([^;]+)/)?.[1])
+      .filter(Boolean);
+    assert.ok(animated.length, '.octo-tentacle has an animation');
+    assert.ok(
+      animated.some((value) => value.split(/[\s,]+/).some((word) => keyframes.has(word))),
+      '.octo-tentacle animation names a @keyframes defined in the file',
+    );
+
+    const reduced = html.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n {2}\}/)?.[1];
+    assert.ok(reduced, 'has a prefers-reduced-motion: reduce block');
+    for (const sel of ['\\.octo(?![\\w-])', '\\.octo-tentacle', '\\.octo-eye', '\\.agent', '\\.chip\\.pending']) {
+      assert.match(reduced, new RegExp(`${sel}[^{]*\\{[^}]*animation:\\s*none`), `${sel} animation disabled`);
+    }
+  });
 });
