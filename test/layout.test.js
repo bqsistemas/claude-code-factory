@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { FLOOR, FLOOR_VIEWBOX } from '../src/game/scene.js';
 import { STAGES } from '../src/game/engine.js';
 import { TOUR_STEPS } from '../src/game/scenarios.js';
 
 const ITEMS = [...STAGES, ...TOUR_STEPS];
-import { BOTTOM_PANEL, HUD_HEIGHT, MARGIN, PANEL_GAP, TOP_PANEL, screenLayout } from '../src/game/layout.js';
+import { BOTTOM_PANEL, HUD_HEIGHT, MARGIN, MIN_LABEL_PX, PANEL_GAP, TOP_PANEL, floorView, screenLayout } from '../src/game/layout.js';
 
 const css = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
 const loop = readFileSync(new URL('../src/game/FactoryLoop.jsx', import.meta.url), 'utf8');
@@ -84,8 +85,24 @@ test('AC-5: the narrow dock and small-viewport fallback are intact', () => {
 });
 
 test('AC-6: FactoryLoop imports screenLayout and the bundle has no right-dock code', () => {
-  assert.match(loop, /import \{ screenLayout \} from '\.\/layout\.js';/);
+  assert.match(loop, /import \{[^}]*\bscreenLayout\b[^}]*\} from '\.\/layout\.js';/);
   assert.ok(!loop.includes('panelWidth'));
   assert.ok(!bundle.includes('panelWidth'));
   assert.ok(!bundle.includes('.4*e)+16') && !bundle.includes('.4 * width) + 16'));
+});
+
+test('AC-7: floorView keeps floor labels at least 10 px and inside the plant frame', () => {
+  const full = FLOOR_VIEWBOX;
+  for (const [w, h] of [...WIDE_SIZES, [375, 667], [320, 568]]) {
+    for (const item of ITEMS) {
+      const { scene } = screenLayout(item, w, h);
+      for (const focus of [[full.x, full.y], [full.x + full.width / 2, full.y + full.height / 2], [full.x + full.width, full.y + full.height]]) {
+        const view = floorView(scene, focus);
+        assert.ok(view.scale * FLOOR.labelSize >= MIN_LABEL_PX - 1e-9, `${w}x${h} label ${view.scale * FLOOR.labelSize}px`);
+        assert.ok(Math.abs(view.width / view.height - scene.width / scene.height) < 1e-9, 'same aspect as the box');
+        if (view.width <= full.width) assert.ok(view.x >= full.x - 1e-9 && view.x + view.width <= full.x + full.width + 1e-9, 'inside in x');
+        if (view.height <= full.height) assert.ok(view.y >= full.y - 1e-9 && view.y + view.height <= full.y + full.height + 1e-9, 'inside in y');
+      }
+    }
+  }
 });

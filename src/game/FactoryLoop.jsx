@@ -13,7 +13,7 @@ import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } fr
 
 import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
-import { screenLayout } from './layout.js';
+import { captionText, floorView, screenLayout } from './layout.js';
 import { Octopus } from './Octopus.jsx';
 import { BELT_PERIOD_MS, BELT_PITCH, WIRE_PERIOD_MS, packageAt, treadOffset } from './pipeline.js';
 import { SCENARIOS, TOUR_STEPS } from './scenarios.js';
@@ -35,7 +35,7 @@ import {
 
 const color = {
   bg: 'var(--color-bg, #0b0d17)',
-  panel: 'rgba(21, 26, 46, 0.9)', // --color-panel, near-solid for text contrast
+  panel: 'color-mix(in srgb, var(--color-panel, #151a2e) 90%, transparent)', // near-solid for text contrast
   text: 'var(--color-text, #e6edff)',
   magenta: 'var(--color-magenta, #ff5ad9)',
   green: 'var(--color-green, #39ff88)',
@@ -291,7 +291,9 @@ function Lamps({ station, routed }) {
         const lx = 8 + k * 11;
         return (
           <g key={lens}>
-            <rect x={lx} y={10} width={size} height={size} className="iso-detail" />
+            <rect x={lx} y={10} width={size} height={size} className="iso-detail">
+              <title>{`lente ${lens}`}</title>
+            </rect>
             {on && (
               <g filter="url(#iso-glow)">
                 <rect x={lx} y={10} width={size} height={size} className="iso-led iso-hot" style={glow ? { fill: glow } : undefined}>
@@ -463,18 +465,17 @@ function Labels({ litId }) {
 // `step` is the TOUR_STEPS entry at `stepIndex` on the tour, and undefined in the quiz.
 // `stepMs` is the time since the step started; `time` is the same on the tour's
 // whole-cycle clock, which keeps belts and wires seamless from one step to the next.
-function IsoFloor({ active, frame, box, time, step, stepIndex, stepMs }) {
+function IsoFloor({ active, frame, box, time, step, view, pkg }) {
   const current = STAGES[Math.max(active, 0)];
   const tour = step !== undefined;
   const scenario = tour ? SCENARIOS[step.scenarioIndex] : null;
   const litId = tour ? step.path[step.path.length - 1] : current.id;
   const lit = interpolate(frame, LIT_FRAMES, [0, 1], clamp);
-  const progress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
   const pulseOffset = interpolate(frame, PACKAGE_FRAMES, PULSE_OFFSETS, clamp);
   const litKeys = tour ? step.path.slice(1).map((id, k) => `${step.path[k]}>${id}`) : [];
   const litPods = tour ? new Set(step.actors.map((actor) => actor.name)) : null;
   const routed = scenario ? Object.keys(scenario.routed.reviewers) : [];
-  const { x, y, width, height } = FLOOR_VIEWBOX;
+  const { x, y, width, height } = view;
   const label = tour
     ? `Planta del factory: ${scenario.title}, paso ${step.stepInScenario + 1} de ${scenario.steps.length}`
     : `Planta del factory: etapa ${active + 1} de ${STAGES.length}, ${current.title}`;
@@ -513,11 +514,7 @@ function IsoFloor({ active, frame, box, time, step, stepIndex, stepMs }) {
       )}
       {/* The package rides at deck height; nothing stands in front of it on a deck, and
           bins and bays are lower than the deck, so it is painted after every node. */}
-      {tour ? (
-        <Package position={packageAt(stepIndex, stepMs).position} />
-      ) : (
-        <Package position={packagePosition(active, progress).map((v, k) => v + FLOOR.packageOffset[k])} />
-      )}
+      <Package position={pkg} />
       <Labels litId={litId} />
     </svg>
   );
@@ -529,8 +526,8 @@ function IsoFloor({ active, frame, box, time, step, stepIndex, stepMs }) {
 // station, drawn over the drawing so the drawing keeps role="img". Stations are
 // drawn in order, so where neighbouring outlines overlap the later (right-hand)
 // one wins, as it does in the drawing.
-function StationHits({ active, box, onSelect }) {
-  const { x, y, width, height } = FLOOR_VIEWBOX;
+function StationHits({ active, box, view, onSelect }) {
+  const { x, y, width, height } = view;
   const onKeyDown = (event, i) => {
     if (event.key === 'Enter' || event.key === ' ') {
       if (event.key === ' ') event.preventDefault();
@@ -619,7 +616,7 @@ function Caption({ stage, step, frame, layout }) {
         transform: `translateY(${(1 - enter) * -12}px)`,
       }}
     >
-      {step && <div style={{ fontSize: 14 * unit, lineHeight: 1.35, marginBottom: 8 * unit }}>{step.text}</div>}
+      {step && <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginBottom: 8 * unit }}>{step.text}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 * unit, marginBottom: 8 * unit }}>
         {chips.length === 0 ? (
           <span style={{ fontSize: 16 * unit }}>Sin agentes: lo hace el orquestador o un script</span>
@@ -627,11 +624,11 @@ function Caption({ stage, step, frame, layout }) {
           chips.map((chip, i) => <Chip key={chip.name} {...chip} unit={unit} offset={i} />)
         )}
       </div>
-      <div style={{ fontSize: 14 * unit, lineHeight: 1.35 }}>
+      <div style={{ fontSize: captionText(unit), lineHeight: 1.35 }}>
         Escribe: <span style={{ color: color.magenta }}>{step ? step.file : stage.output}</span>
       </div>
       {step?.condition && (
-        <div style={{ fontSize: 14 * unit, lineHeight: 1.35, marginTop: 4 * unit }}>
+        <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginTop: 4 * unit }}>
           Condición: <span style={{ color: color.green }}>{step.condition}</span>
         </div>
       )}
@@ -655,11 +652,16 @@ export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false 
   const active = tour ? STATION_ID.get(step.path[step.path.length - 1]) ?? -1 : clampTo(stageIndex, STAGES.length);
   const layout = screenLayout(step ?? STAGES[active], width, height);
   const stepMs = (frame * 1000) / fps;
+  const progress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
+  const pkg = tour
+    ? packageAt(stepAt, stepMs).position
+    : packagePosition(active, progress).map((v, k) => v + FLOOR.packageOffset[k]);
+  const view = floorView(layout.scene, iso(pkg.map((v) => v + FLOOR.packageSize / 2)));
   const time = tour ? stepAt * TOUR_STEP_MS + stepMs : undefined;
   return (
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
-      <IsoFloor active={active} frame={frame} box={layout.scene} time={time} step={step} stepIndex={stepAt} stepMs={stepMs} />
-      {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} onSelect={onSelect} />}
+      <IsoFloor active={active} frame={frame} box={layout.scene} time={time} step={step} view={view} pkg={pkg} />
+      {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} view={view} onSelect={onSelect} />}
       <Caption stage={STAGES[Math.max(active, 0)]} step={step} frame={frame} layout={layout} />
     </AbsoluteFill>
   );
