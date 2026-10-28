@@ -106,3 +106,117 @@ test('AC-7: floorView keeps floor labels at least 10 px and inside the plant fra
     }
   }
 });
+
+// --- Job 017: keep the factory floor visible on phones -------------------------
+import { chipText, captionContent } from '../src/game/layout.js';
+import { SELECT_FRAME, stepForStation } from '../src/game/tour.js';
+import { TOUR_STEP_MS } from '../src/game/tour.js';
+import { iso, stationOutline } from '../src/game/scene.js';
+import { packageAt } from '../src/game/pipeline.js';
+
+const mainSrc = readFileSync(new URL('../src/game/main.jsx', import.meta.url), 'utf8');
+
+test('AC-1: phones get the caption in the dock and a floor box of at least 40% of the height', () => {
+  for (const [w, h] of [[375, 667], [320, 568]]) {
+    for (const item of ITEMS) {
+      const l = screenLayout(item, w, h);
+      assert.equal(l.captionInDock, true);
+      assert.ok(l.scene.height >= 0.4 * h, `${w}x${h}: ${l.scene.height}`);
+      assert.ok(l.scene.top >= HUD_HEIGHT);
+      assert.ok(l.scene.top + l.scene.height <= h * (1 - BOTTOM_PANEL) - MARGIN + 1e-9);
+    }
+  }
+});
+
+// The wide formula as it was before job 017.
+function wideReference(item, width, height) {
+  const unit = Math.min(1.25, Math.max(0.75, Math.min(width, height) / 720));
+  const captionTop = HUD_HEIGHT + PANEL_GAP + TOP_PANEL * height + 8;
+  const captionWidth = Math.min(width - 2 * MARGIN, 760 * unit);
+  const cap = (u) => Math.max(12, 14 * u);
+  const chips = (item.actors ?? item.agents).length;
+  const perRow = Math.max(1, Math.floor(captionWidth / (260 * unit)));
+  const rows = chips === 0 ? 0.6 : Math.ceil(chips / perRow);
+  const perLine = Math.max(1, Math.floor((captionWidth - 32 * unit) / (cap(unit) * 0.6)));
+  const lines = (text) => (text ? Math.ceil(text.length / perLine) : 0);
+  const textLines = lines(item.text) + lines(item.condition ? `Condición: ${item.condition}` : '');
+  const top = captionTop + (58 + rows * 42) * unit + textLines * cap(unit) * 1.35 + 8;
+  return { unit, captionTop, captionWidth, scene: { left: MARGIN, top, width: Math.max(1, width - 2 * MARGIN), height: Math.max(1, height - MARGIN - top) } };
+}
+
+test('AC-2: wide layouts keep the caption on the floor and their numbers', () => {
+  for (const [w, h] of [[1024, 640], [1280, 720], [1280, 800], [1440, 900], [1920, 1080]]) {
+    for (const item of ITEMS) {
+      const l = screenLayout(item, w, h);
+      const ref = wideReference(item, w, h);
+      assert.equal(l.captionInDock, false);
+      assert.equal(l.unit, ref.unit);
+      assert.equal(l.captionTop, ref.captionTop);
+      assert.equal(l.captionWidth, ref.captionWidth);
+      assert.deepEqual(l.scene, ref.scene);
+    }
+  }
+});
+
+test('AC-3: captionContent describes what a caption shows', () => {
+  for (const item of ITEMS) {
+    const c = captionContent(item);
+    if (item.actors) {
+      assert.equal(c.text, item.text);
+      assert.equal(c.file, item.file);
+      assert.equal(c.condition, item.condition ?? null);
+      assert.deepEqual(c.chips, item.actors);
+    } else {
+      assert.equal(c.text, null);
+      assert.equal(c.condition, null);
+      assert.equal(c.file, item.output);
+      assert.deepEqual(c.chips, item.agents.map((a) => ({ name: a.name, model: a.routing ?? a.model })));
+    }
+  }
+});
+
+test('AC-4: the sources wire the dock caption and hide it on wide screens', () => {
+  assert.match(loop, /!layout\.captionInDock/);
+  assert.match(mainSrc, /function DockCaption/);
+  assert.match(mainSrc, /captionContent/);
+  assert.match(mainSrc, /game__caption/);
+  const tour = mainSrc.slice(mainSrc.indexOf('function TourScreen'));
+  const stage = mainSrc.slice(mainSrc.indexOf('function StageScreen'), mainSrc.indexOf('function TourScreen'));
+  assert.match(tour, /<DockCaption item=\{step\}/);
+  assert.match(stage, /<DockCaption item=\{stage\}/);
+  const wide = block(css, css.indexOf('@media (min-width: 64rem)'));
+  assert.match(wide, /\.game-page \.game__caption\s*\{[^}]*display:\s*none/);
+  assert.ok(bundle.includes('game__caption'));
+});
+
+test('AC-5: a selected station is inside the camera window', () => {
+  for (const [w, h] of [[375, 667], [320, 568], [1280, 720]]) {
+    for (let i = 0; i < STAGES.length; i++) {
+      const s = stepForStation(i);
+      const layout = screenLayout(TOUR_STEPS[s], w, h);
+      for (const ms of [(SELECT_FRAME * 1000) / 30, TOUR_STEP_MS - 1000 / 30]) {
+        const pkg = packageAt(s, ms).position;
+        const v = floorView(layout.scene, iso(pkg.map((n) => n + FLOOR.packageSize / 2)));
+        const pts = stationOutline(i);
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        assert.ok(cx >= v.x && cx <= v.x + v.width && cy >= v.y && cy <= v.y + v.height, `station ${i} at ${w}x${h}, ${ms} ms`);
+      }
+    }
+  }
+});
+
+test('AC-6: chip text is never under 12 px', () => {
+  assert.equal(chipText(0.75), 12);
+  for (let u = 0.75; u <= 1.25; u += 0.05) assert.ok(chipText(u) >= 12);
+  assert.match(loop, /fontSize: chipText\(unit\)/);
+  assert.doesNotMatch(loop, /fontSize: 15 \* unit/);
+  const rule = block(css, css.indexOf('.game__caption {'));
+  const size = /font-size:\s*([\d.]+)rem/.exec(rule);
+  assert.ok(size && Number(size[1]) >= 0.75);
+});
+
+test('AC-7: station hits are clipped to the floor box', () => {
+  assert.match(block(css, css.indexOf('.iso-hits {')), /overflow:\s*hidden/);
+  for (const attr of ['tabIndex={0}', 'role="button"', 'onClick', 'onKeyDown']) assert.ok(loop.includes(attr));
+});

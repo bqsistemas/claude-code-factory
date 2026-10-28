@@ -13,7 +13,7 @@ import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } fr
 
 import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
-import { captionText, floorView, screenLayout } from './layout.js';
+import { captionContent, captionText, chipText, floorView, screenLayout } from './layout.js';
 import { Octopus } from './Octopus.jsx';
 import { BELT_PERIOD_MS, BELT_PITCH, WIRE_PERIOD_MS, packageAt, treadOffset } from './pipeline.js';
 import { SCENARIOS, TOUR_STEPS } from './scenarios.js';
@@ -571,7 +571,7 @@ const chipStyle = (unit, accent) => ({
   display: 'inline-flex',
   alignItems: 'center',
   gap: 6 * unit,
-  fontSize: 15 * unit,
+  fontSize: chipText(unit),
   padding: `${2 * unit}px ${10 * unit}px ${2 * unit}px ${4 * unit}px`,
   border: `2px solid ${accent}`,
   borderRadius: 4,
@@ -596,9 +596,7 @@ function Chip({ name, model, unit, offset }) {
 function Caption({ stage, step, frame, layout }) {
   const { unit, captionTop, captionWidth } = layout;
   const enter = interpolate(frame, [0, 15], [0, 1], clamp);
-  const chips = step
-    ? step.actors
-    : stage.agents.map((agent) => ({ name: agent.name, model: agent.routing ?? agent.model }));
+  const { text, chips, file, condition } = captionContent(step ?? stage);
   return (
     <div
       style={{
@@ -616,7 +614,7 @@ function Caption({ stage, step, frame, layout }) {
         transform: `translateY(${(1 - enter) * -12}px)`,
       }}
     >
-      {step && <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginBottom: 8 * unit }}>{step.text}</div>}
+      {text && <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginBottom: 8 * unit }}>{text}</div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 * unit, marginBottom: 8 * unit }}>
         {chips.length === 0 ? (
           <span style={{ fontSize: 16 * unit }}>Sin agentes: lo hace el orquestador o un script</span>
@@ -625,11 +623,11 @@ function Caption({ stage, step, frame, layout }) {
         )}
       </div>
       <div style={{ fontSize: captionText(unit), lineHeight: 1.35 }}>
-        Escribe: <span style={{ color: color.magenta }}>{step ? step.file : stage.output}</span>
+        Escribe: <span style={{ color: color.magenta }}>{file}</span>
       </div>
-      {step?.condition && (
+      {condition && (
         <div style={{ fontSize: captionText(unit), lineHeight: 1.35, marginTop: 4 * unit }}>
-          Condición: <span style={{ color: color.green }}>{step.condition}</span>
+          Condición: <span style={{ color: color.green }}>{condition}</span>
         </div>
       )}
     </div>
@@ -662,7 +660,7 @@ export function FactoryLoop({ stageIndex, stepIndex, onSelect, pipeline = false 
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
       <IsoFloor active={active} frame={frame} box={layout.scene} time={time} step={step} view={view} pkg={pkg} />
       {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} view={view} onSelect={onSelect} />}
-      <Caption stage={STAGES[Math.max(active, 0)]} step={step} frame={frame} layout={layout} />
+      {!layout.captionInDock && <Caption stage={STAGES[Math.max(active, 0)]} step={step} frame={frame} layout={layout} />}
     </AbsoluteFill>
   );
 }
