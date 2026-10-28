@@ -23,6 +23,12 @@ import { TOUR_STEP_MS, createTour, nextStep, selectStep, togglePlaying } from '.
 const DURATION = 120;
 // The tour Player plays one whole step at 30 fps; "Pausar" pauses it (WCAG 2.2.2).
 const TOUR_FRAMES = (TOUR_STEP_MS * 30) / 1000;
+// The tour Player loops and runs one second longer than a step, so the step timer
+// always restarts it before it wraps and it never reaches an end. At its end a
+// non-looping Player stops itself; when that stop met the step timer's play(),
+// the Player stayed flagged "playing" with its frame loop stopped and froze the
+// tour for good. Only pause() (Pausar, a station select) stops this one.
+const TOUR_PLAYER_FRAMES = TOUR_FRAMES + 30;
 // After a station is selected the paused tour shows this frame: the station is
 // fully lit (frames 0-15) and the belt pulse has arrived (frame 75).
 const LIT_FRAME = 75;
@@ -304,14 +310,14 @@ function TourScreen({ onExit, audio }) {
           ref={playerRef}
           component={FactoryLoop}
           inputProps={{ stageIndex: tour.index, onSelect, pipeline: true }}
-          durationInFrames={TOUR_FRAMES}
+          durationInFrames={TOUR_PLAYER_FRAMES}
+          loop
           fps={30}
           compositionWidth={width}
           compositionHeight={height}
           numberOfSharedAudioTags={0}
           initiallyMuted
           spaceKeyToPlayOrPause={false}
-          moveToBeginningWhenEnded={false}
           initialFrame={reduced ? TOUR_FRAMES - 1 : 0}
           style={{ width: '100%', height: '100%' }}
         />
