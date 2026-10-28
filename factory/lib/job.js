@@ -262,7 +262,7 @@ function refreshFromFiles(c, job) {
 /** Parks the job for a human: PR ready + comment (if any), issue label + comment. */
 function escalate(c, job, note) {
   job.parked_from = job.stage;
-  if (job.pr) {
+  if (prState(c, job) === 'OPEN') {
     gh(c, ['pr', 'ready', String(job.pr)]);
     ghWithBody(c, ['pr', 'comment', String(job.pr)], `${marker('note', job.id)}\n**Factory needs a human:** ${note}\n`);
   }
@@ -332,6 +332,19 @@ function merge(c, job) {
   return job;
 }
 
+/** The PR's state on GitHub, or null when there is no PR or the lookup fails. Never throws. */
+function prState(c, job) {
+  if (!job.pr) return null;
+  const res = run(c.gh, ['pr', 'view', String(job.pr), '--json', 'state'], { cwd: c.root });
+  if (res.status !== 0) return null;
+  try {
+    const state = JSON.parse(res.stdout)?.state;
+    return ['OPEN', 'MERGED', 'CLOSED'].includes(state) ? state : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Refuses unless job.pr is MERGED on GitHub; then finishes the job as merged. */
 function finishIfPrMerged(c, job, note, waitingHint = '') {
   const { state } = JSON.parse(gh(c, ['pr', 'view', String(job.pr), '--json', 'state']));
@@ -348,6 +361,12 @@ function finishIfPrClosed(c, job) {
   ghWithBody(c, ['issue', 'comment', String(job.issue)],
     `${marker('note', job.id)}\nPR #${job.pr} was closed without merging, so the factory stopped job \`${job.id}\`.\n`);
   finish(c, job, 'rejected', `PR #${job.pr} closed without merging`);
+}
+
+/** Finishes the job as merged when a human merged its PR; the note names the stage. */
+function mergedOutside(c, job, needPr = false, hint = '') {
+  if (needPr && !job.pr) throw new Refused('the job has no PR');
+  finishIfPrMerged(c, job, `PR #${job.pr} merged outside the factory during ${job.stage}`, hint);
 }
 
 /** True when a trusted reviewer's latest APPROVED/CHANGES_REQUESTED/DISMISSED review is CHANGES_REQUESTED. */
@@ -500,15 +519,21 @@ const TRANSITIONS = {
   },
   'needs-human>merged'(c, job) {
     if (!job.pr) throw new Refused(`no PR yet; to continue, run: factory/bin/job ${job.id} to ${job.parked_from ?? 'intake'}`);
-    finishIfPrMerged(c, job, `PR #${job.pr} merged by a human`);
+    mergedOutside(c, job);
   },
+  'build>merged'(c, job) { mergedOutside(c, job, true); },
+  'gate>merged'(c, job) { mergedOutside(c, job, true); },
+  'review>merged'(c, job) { mergedOutside(c, job, true); },
   'approve>merged'(c, job) {
     if (!job.pr) throw new Refused('the job has no PR');
-    finishIfPrMerged(c, job, `PR #${job.pr} merged outside the factory`);
+    mergedOutside(c, job);
   },
   'awaiting-merge>merged'(c, job) {
-    finishIfPrMerged(c, job, `PR #${job.pr} merged outside the factory`, '; still waiting for a reviewer to merge it');
+    mergedOutside(c, job, false, '; still waiting for a reviewer to merge it');
   },
+  'build>rejected'(c, job) { finishIfPrClosed(c, job); },
+  'gate>rejected'(c, job) { finishIfPrClosed(c, job); },
+  'review>rejected'(c, job) { finishIfPrClosed(c, job); },
   'awaiting-merge>rejected'(c, job) { finishIfPrClosed(c, job); },
   'approve>rejected'(c, job) { finishIfPrClosed(c, job); },
   'needs-human>rejected'(c, job) { finishIfPrClosed(c, job); },
@@ -519,7 +544,7 @@ function toNeedsHuman(c, job, note) {
     const decision = readText(file(c, job, 'decision.md'));
     if (decision !== null && /^ESCALATE\b/.test(decision)) {
       const reason = (note ?? decision.split(/\r?\n/)[1] ?? '').trim() || 'the approver escalated';
-      if (job.pr) {
+      if (prState(c, job) === 'OPEN') {
         gh(c, ['pr', 'ready', String(job.pr)]);
         ghWithBody(c, ['pr', 'comment', String(job.pr)], `${marker('decision', job.id)}\n${decision}`);
       }

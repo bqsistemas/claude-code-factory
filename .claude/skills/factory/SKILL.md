@@ -82,9 +82,9 @@ factory/
     cause, run `factory/bin/job <id> to <parked_from>` (`parked_from` is in `job.json`;
     a refusal names it), then continue the job at that stage.
 
-There is no approve command: a human approves by merging the PR on GitHub (a job in
-`approve`, `needs-human` or `awaiting-merge`), and the next `/factory run` moves the
-job to `merged`.
+There is no approve command: a human approves by merging the PR on GitHub, at any
+stage (`build`, `gate`, `review`, `approve`, `needs-human` or `awaiting-merge`), and
+the next `/factory run` moves the job to `merged`.
 
 ## Preflight (every command)
 
@@ -105,13 +105,15 @@ job to `merged`.
 1. `gh issue list --label factory --state open --json number --limit 100`, then
    `factory/bin/job new <n>` for each issue. It prints the job id and is idempotent,
    so existing jobs keep theirs. A refusal means the issue isn't open or labeled.
-2. Parked jobs: for every `needs-info` job try `job <id> to intake`, and for every
-   `approve`, `needs-human` or `awaiting-merge` job try `job <id> to merged`. If that is
-   refused, try `job <id> to rejected` (the PR was closed without merging). If that is
-   also refused and the stage is `approve` or `awaiting-merge`, try
-   `job <id> to needs-human` with no `--note` (a trusted "Request changes" review on the
-   PR). A refusal just means "still waiting". This runs before any approver is spawned, so a PR
-   merged by hand while the job sat in `approve` is caught without an agent.
+2. PR checks: for every `needs-info` job try `job <id> to intake`. For every job in
+   `build`, `gate`, `review`, `approve`, `awaiting-merge` or `needs-human` that has a
+   `pr`, try `job <id> to merged`. If that is refused, try `job <id> to rejected` (the
+   PR was closed without merging). If that is also refused and the stage is `approve` or
+   `awaiting-merge`, try `job <id> to needs-human` with no `--note` (a trusted
+   "Request changes" review on the PR). A refusal just means "still waiting". This runs before
+   any agent is spawned. Repeat the check right before spawning any agent for a job
+   with a `pr`, or before moving that job, and skip a job that ends up `merged` or
+   `rejected`. Ignore output from agents still running for such a job.
 3. Advance up to `concurrency` active jobs (stages `intake` to `merging`), oldest id
    first. A job resumes from its `stage` in `job.json` (see **Stages**). When one
    finishes or parks, start the next. `awaiting-merge` is parked: it uses no
