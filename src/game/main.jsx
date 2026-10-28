@@ -1,6 +1,6 @@
 // Browser entry for /game: mounts the quiz UI and the Remotion Player into #game.
 // Bundled to public/game.js with `npm run build:game`.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Player } from '@remotion/player';
 
@@ -15,6 +15,7 @@ import {
   currentQuestion,
   maxScore,
 } from './engine.js';
+import { TOUR_STEP_MS, createTour, nextStep, selectStep, togglePlaying } from './tour.js';
 
 // At most 5 seconds (WCAG 2.2.2): the Player has no pause control.
 const DURATION = 120;
@@ -81,7 +82,7 @@ function StagePlayer({ stageIndex }) {
   );
 }
 
-function Intro({ onStart }) {
+function Intro({ onStart, onTour }) {
   const startRef = useFocusOnMount();
   return (
     <section className="game__panel" aria-labelledby="game-title">
@@ -94,6 +95,9 @@ function Intro({ onStart }) {
       </p>
       <button type="button" className="game__button" ref={startRef} onClick={onStart}>
         Empezar
+      </button>{' '}
+      <button type="button" className="game__button" onClick={onTour}>
+        Ver el loop
       </button>
     </section>
   );
@@ -170,6 +174,82 @@ function StageScreen({ question, number, result, onAnswer, onNext }) {
   );
 }
 
+// The guided loop tour: the floor plays stage by stage on its own, wrapping after
+// the last one. Clicking (or Enter/Space on) a station jumps to it and pauses.
+// The tour never answers a question and never changes the score.
+function TourScreen({ onExit }) {
+  const [tour, setTour] = useState(createTour);
+  const headingRef = useFocusOnMount();
+  const playerRef = useRef(null);
+  const reduced = prefersReducedMotion();
+  const { width, height } = useCompositionSize();
+  const stage = STAGES[tour.index];
+
+  // Auto-advance. Cleared on pause, on every step change, and on unmount.
+  useEffect(() => {
+    if (!tour.playing) return undefined;
+    const timer = setTimeout(() => setTour((t) => nextStep(t)), TOUR_STEP_MS);
+    return () => clearTimeout(timer);
+  }, [tour.index, tour.playing]);
+
+  // The Player stays mounted across steps (so a focused station keeps focus);
+  // each new step restarts its animation, or shows its last frame.
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    if (reduced) {
+      player.seekTo(DURATION - 1);
+    } else {
+      player.seekTo(0);
+      player.play();
+    }
+  }, [tour.index, reduced]);
+
+  const onSelect = useCallback((i) => setTour((t) => selectStep(t, i)), []);
+
+  return (
+    <section className="game__panel" aria-labelledby="tour-title">
+      <div className="game__scene">
+        <Player
+          ref={playerRef}
+          component={FactoryLoop}
+          inputProps={{ stageIndex: tour.index, onSelect }}
+          durationInFrames={DURATION}
+          fps={30}
+          compositionWidth={width}
+          compositionHeight={height}
+          numberOfSharedAudioTags={0}
+          initiallyMuted
+          spaceKeyToPlayOrPause={false}
+          autoPlay={!reduced}
+          moveToBeginningWhenEnded={false}
+          initialFrame={reduced ? DURATION - 1 : 0}
+          style={{ width: '100%', height: '100%' }}
+        />
+      </div>
+      <div className="game__stage">
+        <div className="game__media" aria-live="polite">
+          <p className="game__progress">
+            Loop guiado · Etapa {tour.index + 1} de {STAGES.length}
+          </p>
+          <h1 id="tour-title" className="game__title" tabIndex={-1} ref={headingRef}>
+            {stage.title}
+          </h1>
+          <p className="game__text">{stage.summary}</p>
+        </div>
+        <p>
+          <button type="button" className="game__button" onClick={() => setTour((t) => togglePlaying(t))}>
+            {tour.playing ? 'Pausar' : 'Reanudar'}
+          </button>{' '}
+          <button type="button" className="game__button" onClick={onExit}>
+            Salir del loop
+          </button>
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function Finished({ state, onRestart }) {
   const headingRef = useFocusOnMount();
   return (
@@ -198,7 +278,7 @@ function Finished({ state, onRestart }) {
 
 function Game() {
   const [state, setState] = useState(createGame);
-  const [screen, setScreen] = useState('intro'); // intro | question | feedback | finished
+  const [screen, setScreen] = useState('intro'); // intro | tour | question | feedback | finished
   // The question just answered and the result, kept while feedback is shown,
   // because `state` has already moved on to the next question.
   const [last, setLast] = useState(null);
@@ -209,7 +289,11 @@ function Game() {
   }, [state.score]);
 
   if (screen === 'intro') {
-    return <Intro onStart={() => setScreen('question')} />;
+    return <Intro onStart={() => setScreen('question')} onTour={() => setScreen('tour')} />;
+  }
+
+  if (screen === 'tour') {
+    return <TourScreen onExit={() => setScreen('intro')} />;
   }
 
   if (screen === 'finished') {

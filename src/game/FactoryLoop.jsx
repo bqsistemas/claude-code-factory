@@ -10,7 +10,17 @@ import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } fr
 
 import { STAGES } from './engine.js';
 import { Octopus } from './Octopus.jsx';
-import { FLOOR, FLOOR_VIEWBOX, PLATE, REWORK_POINTS, STATIONS, iso, labelAnchor, packagePosition } from './scene.js';
+import {
+  FLOOR,
+  FLOOR_VIEWBOX,
+  PLATE,
+  REWORK_POINTS,
+  STATIONS,
+  iso,
+  labelAnchor,
+  packagePosition,
+  stationOutline,
+} from './scene.js';
 
 const color = {
   bg: 'var(--color-bg, #0b0d17)',
@@ -343,6 +353,48 @@ function IsoFloor({ active, frame, box }) {
   );
 }
 
+// --- Station hit layer (guided tour only) ----------------------------------------
+
+// A transparent copy of the floor's frame with one focusable polygon per
+// station, drawn over the drawing so the drawing keeps role="img". Stations are
+// drawn in order, so where neighbouring outlines overlap the later (right-hand)
+// one wins, as it does in the drawing.
+function StationHits({ active, box, onSelect }) {
+  const { x, y, width, height } = FLOOR_VIEWBOX;
+  const onKeyDown = (event, i) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      if (event.key === ' ') event.preventDefault();
+      onSelect(i);
+    }
+  };
+  return (
+    <svg
+      className="iso-hits"
+      role="group"
+      aria-label="Estaciones del factory"
+      viewBox={[x, y, width, height].map(num).join(' ')}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ position: 'absolute', ...box }}
+    >
+      {STAGES.map((stage, i) => (
+        <polygon
+          key={stage.id}
+          className="iso-hit"
+          points={stationOutline(i)
+            .map((p) => p.map(num).join(','))
+            .join(' ')}
+          role="button"
+          tabIndex={0}
+          aria-label={`Etapa ${i + 1}: ${stage.title}`}
+          aria-current={i === active ? 'step' : undefined}
+          onClick={() => onSelect(i)}
+          onKeyDown={(event) => onKeyDown(event, i)}
+        />
+      ))}
+    </svg>
+  );
+}
+
 // --- Caption -------------------------------------------------------------------
 
 function Caption({ stage, index, frame, layout }) {
@@ -402,7 +454,10 @@ function Caption({ stage, index, frame, layout }) {
   );
 }
 
-export function FactoryLoop({ stageIndex }) {
+// `onSelect` is optional: when it is a function (the guided tour), every station
+// becomes a button that calls onSelect(stationIndex). Without it (quiz screens)
+// the output is the drawing and the caption only.
+export function FactoryLoop({ stageIndex, onSelect }) {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   const active = Math.min(Math.max(Number.isFinite(stageIndex) ? Math.trunc(stageIndex) : 0, 0), STAGES.length - 1);
@@ -410,6 +465,7 @@ export function FactoryLoop({ stageIndex }) {
   return (
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
       <IsoFloor active={active} frame={frame} box={layout.scene} />
+      {typeof onSelect === 'function' && <StationHits active={active} box={layout.scene} onSelect={onSelect} />}
       <Caption stage={STAGES[active]} index={active} frame={frame} layout={layout} />
     </AbsoluteFill>
   );

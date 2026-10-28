@@ -33,6 +33,14 @@ que falle la suite.
 
 Todo se maneja con teclado: cada control es un botón.
 
+Si solo quieres mirar, presiona **Ver el loop** en la pantalla inicial. El recorrido
+avanza solo por las etapas, una cada 10 segundos, y al terminar la última vuelve a la
+primera: la estación activa se ilumina, el panel explica la etapa y el recuadro muestra
+los agentes que trabajan en ella. **Pausar** detiene el avance y **Reanudar** lo
+continúa. Si haces clic en una estación (o la eliges con Tab y presionas Enter o
+Espacio), el recorrido salta a ella y se pausa para que leas su explicación. **Salir del
+loop** te devuelve a la pantalla inicial; el recorrido no suma ni resta puntos.
+
 ## Etapas del factory
 
 ### 1. Pedido de feature
