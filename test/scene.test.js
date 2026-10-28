@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { STAGES } from '../src/game/engine.js';
 import { readFile } from 'node:fs/promises';
 
-import { FLOOR_VIEWBOX, STATIONS, compositionSize, iso, isoFrame, packagePosition, stationOutline } from '../src/game/scene.js';
+import * as scene from '../src/game/scene.js';
+import { FLOOR_VIEWBOX, PLATE, STATIONS, compositionSize, iso, isoFrame, packagePosition, stationOutline } from '../src/game/scene.js';
 
 const isFiniteTriple = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -188,6 +189,92 @@ describe('job 008: guided loop tour', () => {
 
     for (const bad of [-1, STATIONS.length, 0.5]) {
       assert.throws(() => stationOutline(bad), RangeError, `stationOutline(${bad}) throws`);
+    }
+  });
+});
+
+describe('job 009: approval fork on the iso floor', () => {
+  const { FORK } = scene;
+  const outcome = STATIONS.find((s) => s.id === 'outcome');
+  const deepFrozen = (value, path = 'FORK') => {
+    if (value === null || typeof value !== 'object') return;
+    assert.ok(Object.isFrozen(value), `${path} is frozen`);
+    for (const [key, child] of Object.entries(value)) deepFrozen(child, `${path}.${key}`);
+  };
+  const within = (v, lo, hi) => v >= lo && v <= hi;
+  const footprint = ({ position: [x, y], size: [w, d] }) => ({ x0: x, x1: x + w, y0: y, y1: y + d });
+  const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+  test('AC-1: FORK is deep-frozen with the approve and escalate branches, split on the outcome deck', () => {
+    assert.ok(FORK, 'scene.js exports FORK');
+    deepFrozen(FORK);
+    assert.equal(FORK.branches.length, 2, 'exactly two branches');
+    assert.deepEqual(FORK.branches.map((b) => b.id), ['approve', 'escalate']);
+    assert.deepEqual(FORK.branches.map((b) => b.decision), ['APPROVE', 'ESCALATE']);
+    assert.deepEqual(FORK.branches.map((b) => b.label), ['APPROVE: merge a main', 'ESCALATE: needs-human']);
+
+    const [px, py, pz] = FORK.point;
+    assert.ok(isFiniteTriple(FORK.point), 'FORK.point is a finite triple');
+    assert.ok(within(px, outcome.position[0], outcome.position[0] + outcome.size[0]), `x ${px} inside the outcome footprint`);
+    assert.ok(within(py, outcome.position[1], outcome.position[1] + outcome.size[1]), `y ${py} inside the outcome footprint`);
+    assert.equal(pz, outcome.size[2], 'z is the outcome station height');
+  });
+
+  test('AC-2: each branch wire runs from FORK.point to its pad in straight iso segments', () => {
+    for (const { id, points, pad } of FORK.branches) {
+      assert.ok(Array.isArray(points) && points.length >= 2, `${id} has at least 2 points`);
+      for (const p of points) assert.ok(isFiniteTriple(p), `${id} point ${p} is a finite triple`);
+      assert.deepEqual(points[0], FORK.point, `${id} starts at FORK.point`);
+      const [ex, ey] = points[points.length - 1];
+      const f = footprint(pad);
+      assert.ok(within(ex, f.x0, f.x1) && within(ey, f.y0, f.y1), `${id} ends over its pad`);
+      for (let k = 1; k < points.length; k += 1) {
+        const dx = points[k][0] !== points[k - 1][0];
+        const dy = points[k][1] !== points[k - 1][1];
+        assert.ok(dx !== dy, `${id} segment ${k} changes exactly one of x or y`);
+      }
+    }
+  });
+
+  test('AC-3: the pads stand past the outcome station, approve behind the line and escalate in front, without overlaps', () => {
+    for (const { id, pad } of FORK.branches) {
+      assert.ok(isFiniteTriple(pad.size) && pad.size.every((v) => v > 0), `${id} pad size is 3 finite positive numbers`);
+      assert.ok(isFiniteTriple(pad.position), `${id} pad position is a finite triple`);
+      assert.equal(pad.position[2], 0, `${id} pad stands on the floor`);
+      assert.ok(pad.position[0] >= outcome.position[0] + outcome.size[0], `${id} pad starts past the outcome station`);
+    }
+    const [approve, escalate] = FORK.branches.map((b) => b.pad);
+    assert.ok(approve.position[1] + approve.size[1] <= 0, 'APPROVE pad is behind the station row');
+    assert.ok(escalate.position[1] >= outcome.position[1] + outcome.size[1], 'ESCALATE pad is in front of the station row');
+
+    const boxes = [
+      ...FORK.branches.map((b) => ({ id: `${b.id} pad`, ...footprint(b.pad) })),
+      ...STATIONS.map((s) => ({ id: s.id, ...footprint(s) })),
+    ];
+    for (let i = 0; i < boxes.length; i += 1) {
+      for (let j = i + 1; j < boxes.length; j += 1) {
+        assert.ok(!overlaps(boxes[i], boxes[j]), `${boxes[i].id} and ${boxes[j].id} do not overlap`);
+      }
+    }
+  });
+
+  test('AC-4: FLOOR_VIEWBOX frames the pads, wires and labels, and PLATE covers both pads', () => {
+    const { x, y, width, height } = FLOOR_VIEWBOX;
+    const insideView = (p, label) => {
+      const [sx, sy] = iso(p);
+      assert.ok(sx >= x && sx <= x + width && sy >= y && sy <= y + height, `${label} ${p} projects inside FLOOR_VIEWBOX`);
+    };
+    const plate = footprint(PLATE);
+    for (const { id, pad, points, labelAnchor } of FORK.branches) {
+      for (const corner of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        insideView(pad.position.map((v, k) => v + ((corner >> k) & 1) * pad.size[k]), `${id} pad corner`);
+      }
+      points.forEach((p) => insideView(p, `${id} wire point`));
+      assert.ok(isFiniteTriple(labelAnchor), `${id} labelAnchor is a finite triple`);
+      insideView(labelAnchor, `${id} labelAnchor`);
+      const f = footprint(pad);
+      assert.ok(f.x0 >= plate.x0 && f.x1 <= plate.x1, `${id} pad inside PLATE in x`);
+      assert.ok(f.y0 >= plate.y0 && f.y1 <= plate.y1, `${id} pad inside PLATE in y`);
     }
   });
 });

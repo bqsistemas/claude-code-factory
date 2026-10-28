@@ -564,3 +564,73 @@ describe('job 008: guided loop tour', () => {
     }
   });
 });
+
+describe('job 009: approval fork on the iso floor', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  const labels = ['APPROVE: merge a main', 'ESCALATE: needs-human'];
+
+  test('AC-5: FactoryLoop draws the fork from FORK with dotted branch wires and keeps the earlier scene', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
+    assert.match(sceneImport, /\bFORK\b/, 'imports FORK from ./scene.js');
+    for (const text of ['iso-fork', 'iso-branch', 'strokeDasharray="2 4"']) {
+      assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
+    }
+    assert.ok(loop.includes('branch.label') || labels.every((l) => loop.includes(l)), 'FactoryLoop draws the branch labels');
+    for (const text of [
+      '<svg',
+      'role="img"',
+      'aria-label',
+      'iso-scene',
+      'iso-hot',
+      'filterUnits="userSpaceOnUse"',
+      'url(#iso-bloom)',
+      'stage.title',
+      'Retrabajo: cambios pedidos',
+      '<Octopus',
+      'onSelect',
+      'iso-hits',
+      'iso-hit',
+      'role="group"',
+      'role="button"',
+      'tabIndex={0}',
+      'onKeyDown',
+      'aria-current',
+      'Enter',
+      'stationOutline',
+    ]) {
+      assert.ok(loop.includes(text), `FactoryLoop still contains ${text}`);
+    }
+    assert.ok(!loop.includes('<style'), 'FactoryLoop has no <style');
+  });
+
+  test('AC-6: the bundle carries the fork and /game stays inline-free', async () => {
+    const bundle = await read('../public/game.js');
+    for (const text of ['iso-fork', 'iso-branch', ...labels]) {
+      assert.ok(bundle.includes(text), `bundle contains ${text}`);
+    }
+    const html = await (await fetch(`${baseUrl}/game`)).text();
+    assert.equal(html.match(/<script/gi).length, 1, 'exactly one script');
+    assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
+  });
+
+  test('AC-7: the quest log gains the approval fork item, keeps the earlier ones, and the guide names the bifurcación', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    for (const text of [
+      'See the approval fork on the factory floor',
+      'Build the landing page',
+      'Play the factory learning game',
+      'Meet the octopus agent crew',
+      'Tour the 3D factory floor',
+      'Follow the labeled factory flow',
+      'Light up the iso-glow factory floor',
+      'Take the guided factory loop tour',
+    ]) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+    const guide = await read('../docs/juego-factory.md');
+    assert.ok(guide.includes('bifurcación'), 'guide mentions the bifurcación');
+  });
+});
