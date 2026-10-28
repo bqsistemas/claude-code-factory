@@ -643,6 +643,34 @@ main {
   font-weight: 700;
 }
 
+/* Guided tour: a transparent layer of station outlines over the floor drawing,
+   positioned like it (FactoryLoop sets the same box and viewBox). Only these
+   polygons take clicks inside the scene; the selector is more specific than
+   .game__scene *, so its !important wins. The layer is only rendered on the tour. */
+.iso-hits {
+  position: absolute;
+  overflow: visible;
+}
+
+.iso-hits .iso-hit {
+  fill: transparent;
+  stroke: none;
+  cursor: pointer;
+  pointer-events: all !important;
+}
+
+.iso-hits .iso-hit:hover,
+.iso-hits .iso-hit:focus-visible {
+  stroke: var(--iso-accent);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The accent hairline above replaces the default focus outline. */
+.iso-hits .iso-hit:focus-visible {
+  outline: none;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

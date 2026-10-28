@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { STAGES } from '../src/game/engine.js';
 import { readFile } from 'node:fs/promises';
 
-import { FLOOR_VIEWBOX, STATIONS, compositionSize, iso, isoFrame, packagePosition } from '../src/game/scene.js';
+import { FLOOR_VIEWBOX, STATIONS, compositionSize, iso, isoFrame, packagePosition, stationOutline } from '../src/game/scene.js';
 
 const isFiniteTriple = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
 
@@ -143,6 +143,51 @@ describe('job 007: iso-glow factory floor', () => {
         assert.ok(sx >= x && sx <= x + width, `${id} corner ${p} x ${sx} inside`);
         assert.ok(sy >= y && sy <= y + height, `${id} corner ${p} y ${sy} inside`);
       }
+    }
+  });
+});
+
+describe('job 008: guided loop tour', () => {
+  const EPS = 1e-9;
+
+  // Ray casting: true when [px, py] is strictly inside the polygon.
+  const inside = ([px, py], polygon) => {
+    let hit = false;
+    for (let a = 0, b = polygon.length - 1; a < polygon.length; b = a, a += 1) {
+      const [ax, ay] = polygon[a];
+      const [bx, by] = polygon[b];
+      if (ay > py !== by > py && px < ((bx - ax) * (py - ay)) / (by - ay) + ax) hit = !hit;
+    }
+    return hit;
+  };
+
+  test('AC-3: stationOutline is the 6-point iso silhouette of each station, inside FLOOR_VIEWBOX', () => {
+    const { x: vx, y: vy, width: vw, height: vh } = FLOOR_VIEWBOX;
+    STATIONS.forEach(({ id, position: [x, y], size: [w, d, h] }, i) => {
+      const outline = stationOutline(i);
+      assert.equal(outline.length, 6, `${id} has 6 points`);
+      for (const p of outline) {
+        assert.ok(Array.isArray(p) && p.length === 2 && p.every(Number.isFinite), `${id} point ${p} is 2 finite numbers`);
+      }
+
+      // Recover H from the first point: iso(x, y, H)[1] = (x + y) / 2 - H.
+      const H = (x + y) * Math.sin(Math.PI / 6) - outline[0][1];
+      assert.ok(H >= h - EPS, `${id} H ${H} is at least the box height ${h}`);
+      const corners = [[x, y, H], [x + w, y, H], [x + w, y, 0], [x + w, y + d, 0], [x, y + d, 0], [x, y + d, H]];
+      corners.forEach((corner, k) => {
+        const expected = iso(corner);
+        assert.ok(Math.abs(outline[k][0] - expected[0]) <= EPS, `${id} point ${k} x`);
+        assert.ok(Math.abs(outline[k][1] - expected[1]) <= EPS, `${id} point ${k} y`);
+      });
+
+      for (const [sx, sy] of outline) {
+        assert.ok(sx >= vx && sx <= vx + vw && sy >= vy && sy <= vy + vh, `${id} point ${sx},${sy} inside FLOOR_VIEWBOX`);
+      }
+      assert.ok(inside(iso([x + w / 2, y + d / 2, h]), outline), `${id} top-face center is inside its outline`);
+    });
+
+    for (const bad of [-1, STATIONS.length, 0.5]) {
+      assert.throws(() => stationOutline(bad), RangeError, `stationOutline(${bad}) throws`);
     }
   });
 });

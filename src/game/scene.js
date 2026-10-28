@@ -177,6 +177,31 @@ export const FLOOR_VIEWBOX = Object.freeze(
   ]),
 );
 
+/**
+ * The screen silhouette of station `i`'s box, raised to the tallest deck part
+ * (the height FLOOR_VIEWBOX frames): 6 [sx, sy] points, clockwise from the
+ * back-top-left corner. Used as the station's click and focus target.
+ * @param {number} i station index
+ * @returns {number[][]}
+ * @throws {RangeError} unless i is an integer from 0 to STATIONS.length - 1
+ */
+export function stationOutline(i) {
+  if (!Number.isInteger(i) || i < 0 || i >= STATIONS.length) {
+    throw new RangeError(`station index must be an integer from 0 to ${STATIONS.length - 1}, got ${String(i)}`);
+  }
+  const [x, y] = STATIONS[i].position;
+  const [w, d] = STATIONS[i].size;
+  const H = TALLEST;
+  return [
+    [x, y, H],
+    [x + w, y, H],
+    [x + w, y, 0],
+    [x + w, y + d, 0],
+    [x, y + d, 0],
+    [x, y + d, H],
+  ].map(iso);
+}
+
 /** Clamps a stage index to a valid station index; non-finite values become 0. */
 function stationIndex(stageIndex) {
   if (!Number.isFinite(stageIndex)) return 0;
