@@ -3,19 +3,30 @@
 Every factory agent reads this before working. The orchestrator updates it when a
 merge changes the stack or the test command.
 
-## Snapshot (2026-10-27)
+## Snapshot (2026-10-27, after job 001)
 
-- Repo: empty. `main` has no source code yet.
-- Language and runtime: none chosen yet. Installed: Node.js 20.9, npm 10.1, Python 3.12.
-- Test command: none yet.
+- App: gamified landing page served by a zero-dependency Node HTTP server.
+- Language and runtime: Node.js 20+, ES modules (`"type": "module"`), no runtime
+  dependencies. Installed: Node.js 20.9, npm 10.1, Python 3.12.
+- Run: `npm start` (listens on `PORT`, default 3000).
+- Test command: `npm test` (`node --test test/`, built-in runner).
 
-## Defaults while the repo is empty
+## Layout
 
-The first job sets the stack. Unless its spec says otherwise, the builder uses:
+- `src/app.js`: `createApp()` returns an unstarted `http.Server`. Routes are an
+  exact-match map of URL path to file in `public/`; never build file paths from the request.
+- `src/server.js`: entrypoint, calls `listen`.
+- `public/`: `index.html` and `styles.css`. New static files must be added to the route map.
+- `test/`: one `<module>.test.js` per module; tests start the app on port 0.
 
-- Node.js 20+, ES modules (`"type": "module"` in `package.json`), no runtime dependencies.
-- Built-in test runner: `"test": "node --test test/"` in `package.json`, run with `npm test`.
-- Layout: code in `src/`, tests in `test/`, one `<module>.test.js` per module.
+## Landing page contract
+
+- Every response sends `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: default-src 'self'` (no inline scripts or styles).
+- Stable ids that later jobs build on: `#welcome`, `#level`, `#xp` (a `<progress>`),
+  `#quest-log`. Each shipped feature adds one item to `#quest-log`.
+- Theme colors are CSS custom properties on `:root`; animations respect
+  `prefers-reduced-motion`.
 
 ## Conventions
 
