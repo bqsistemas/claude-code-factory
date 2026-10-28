@@ -111,6 +111,19 @@ test('AC-5: the gate fails when the branch modifies or deletes a protected test,
   assert.ok(deleted.report().includes('test/job.test.js'));
 });
 
+test('AC-5: the gate fails on uncommitted changes, so it only passes committed work', () => {
+  const t = setup();
+  writeFileSync(join(t.worktree, 'test/route.test.js'), '// weakened but not committed\n');
+  assert.equal(t.gate().status, 1);
+  const report = t.report();
+  assert.equal(report.split('\n')[0], 'GATE: FAIL');
+  assert.ok(report.includes('uncommitted: test/route.test.js'), 'names the dirty path');
+
+  const untracked = setup();
+  writeFileSync(join(untracked.worktree, 'scratch.txt'), 'x\n');
+  assert.equal(untracked.gate().status, 1, 'untracked files fail too');
+});
+
 test('AC-5: the gate ignores a worktree-local checks.sh and honours --out', () => {
   const t = setup();
   t.checks(FAILING);

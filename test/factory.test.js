@@ -1,8 +1,9 @@
 // Job 012: the factory v2 files (agents, config, skill, checks) stay wired up.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { accessSync, constants, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { accessSync, constants, existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,6 +85,13 @@ test('AC-8: checks.sh and every factory/bin script are executable; checks.sh run
     );
   }
   assert.ok(!existsSync(join(repo, 'factory/backlog.md')), 'factory/backlog.md is gone');
+
+  // A branch cannot point `npm test` away from the full suite.
+  const dir = mkdtempSync(join(tmpdir(), 'factory-checks-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'node --test test/route.test.js' } }));
+  const res = spawnSync('sh', [join(repo, 'factory/checks.sh')], { cwd: dir, encoding: 'utf8' });
+  assert.equal(res.status, 1, 'checks.sh refuses a changed scripts.test');
+  assert.match(res.stderr, /scripts\.test/);
 });
 
 test('AC-8: SKILL.md documents the v2 commands and keeps the v1 rules', () => {

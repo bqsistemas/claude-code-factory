@@ -206,6 +206,8 @@ describe('job 012: factory v2 board', () => {
     assert.equal(chips.length, 3, 'gate plus two reviews');
     assert.match(chips[0], /class="chip gate PASS"/);
     assert.match(chips[0], />gate</);
+    assert.match(chips[0], /aria-label="gate: PASS"/, 'the gate state is announced, not only coloured');
+    assert.ok(html.includes('aria-label="code: CHANGES"') && html.includes('aria-label="ux: pending"'), 'review states are announced');
     assert.ok(chips.slice(1).every((c) => !/chip gate/.test(c)), 'one gate chip');
     assert.ok(html.indexOf('>gate<') < html.indexOf('>ux<'), 'gate before the first review');
     assert.ok(html.includes('>code<') && html.includes('>ux<'));
@@ -261,6 +263,8 @@ describe('job 012: factory v2 board', () => {
     assert.ok(!html.includes('/factory approve'), 'no /factory approve');
     assert.ok(html.includes('/factory rework'), 'offers /factory rework');
     assert.ok(html.includes('merge the PR to approve'), 'tells the human how to approve');
+    assert.ok(html.includes('no PR yet'), 'a PR-less needs-human card says how to continue');
+    assert.ok(!html.includes('Run /factory to create'), 'no bare /factory command');
     for (const file of ['issue.md', 'intake.md', 'checks.md', 'merge-checks.md']) {
       assert.ok(script.includes(file), `drawer lists ${file}`);
     }
