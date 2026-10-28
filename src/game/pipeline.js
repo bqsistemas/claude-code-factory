@@ -181,3 +181,33 @@ export function pipelineAt(ms) {
   }
   return { packages, queued: packages.filter((p) => p.phase === 'queued').length };
 }
+
+// --- Moving belts and wires --------------------------------------------------------
+
+/** Roller spacing on the belts between stations, in iso units. */
+export const BELT_PITCH = 8;
+/** Rollers advance one pitch per period: 80 units/s, under half a pitch per 30 fps frame. */
+export const BELT_PERIOD_MS = 100;
+/** Dotted wire dashes advance one dash period per melody beat. */
+export const WIRE_PERIOD_MS = 625;
+
+/**
+ * How far a repeating tread (belt rollers, wire dashes) has moved at a moment:
+ * one pitch per period, so it is seamless across the pipeline cycle when the
+ * period divides PIPELINE_CYCLE_MS.
+ * @param {number} ms time in ms; non-finite (including undefined) means 0
+ * @param {number} pitch distance between two treads; finite and > 0
+ * @param {number} periodMs time to move one pitch; finite and > 0
+ * @returns {number} the offset, in [0, pitch)
+ * @throws {RangeError} unless pitch and periodMs are finite and > 0
+ */
+export function treadOffset(ms, pitch, periodMs) {
+  if (!Number.isFinite(pitch) || pitch <= 0) throw new RangeError(`pitch must be a finite number > 0, got ${String(pitch)}`);
+  if (!Number.isFinite(periodMs) || periodMs <= 0) {
+    throw new RangeError(`periodMs must be a finite number > 0, got ${String(periodMs)}`);
+  }
+  if (!Number.isFinite(ms)) return 0;
+  const offset = pitch * (mod(ms, periodMs) / periodMs);
+  // Rounding can land a hair under periodMs on exactly pitch; keep it in [0, pitch).
+  return offset < pitch ? offset : 0;
+}

@@ -13,7 +13,7 @@ import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } fr
 import { AVATARS } from '../../factory/avatars.js';
 import { STAGES } from './engine.js';
 import { Octopus } from './Octopus.jsx';
-import { pipelineAt } from './pipeline.js';
+import { BELT_PERIOD_MS, BELT_PITCH, WIRE_PERIOD_MS, pipelineAt, treadOffset } from './pipeline.js';
 import { TOUR_STEP_MS } from './tour.js';
 import {
   FLOOR,
@@ -204,6 +204,9 @@ function ReworkLoop() {
 // square turned 45 degrees on the deck would project to a flat rectangle).
 const FORK_DIAMOND = 14;
 const ARROW = { back: 8, half: 5 };
+// Dotted wires (strokeDasharray "2 4") repeat every 6 units. On the tour the
+// dots travel along the wire, one period per melody beat, the way packages ride it.
+const DOT_PERIOD = 6;
 
 function forkArrow(points) {
   const end = points[points.length - 1];
@@ -214,7 +217,7 @@ function forkArrow(points) {
   return [side(-1), end, side(1)];
 }
 
-function ApprovalFork({ hot }) {
+function ApprovalFork({ hot, time }) {
   const [px, py, pz] = FORK.point;
   const r = FORK_DIAMOND;
   const diamond = [
@@ -227,7 +230,12 @@ function ApprovalFork({ hot }) {
     <g>
       {FORK.branches.map((branch) => (
         <g key={branch.id}>
-          <path d={pathOf(branch.points)} className={cx('iso-wire iso-branch', hot && 'iso-hot')} strokeDasharray="2 4" />
+          <path
+            d={pathOf(branch.points)}
+            className={cx('iso-wire iso-branch', hot && 'iso-hot')}
+            strokeDasharray="2 4"
+            strokeDashoffset={-treadOffset(time, DOT_PERIOD, WIRE_PERIOD_MS)}
+          />
           <path d={pathOf(forkArrow(branch.points))} className={cx('iso-wire iso-branch', hot && 'iso-hot')} />
         </g>
       ))}
@@ -248,19 +256,26 @@ function ForkLabels() {
 }
 
 // The belt from a station to the next one: a flat strip at deck height, with an
-// edge strip on its front and roller hairlines across it.
-function Belt({ from, to }) {
+// edge strip on its front and roller hairlines across it. On the tour (`time`)
+// the rollers run toward the next station; without it they stand still.
+function Belt({ from, to, time }) {
   const x = from.position[0] + from.size[0];
   const length = to.position[0] - x;
   const [y0, y1] = FLOOR.lane;
   const z = from.size[2];
+  const shift = treadOffset(time, BELT_PITCH, BELT_PERIOD_MS);
+  // Rollers keep one pitch clear of either end of the belt.
+  const rollers = [];
+  for (let rx = shift; rx <= length - BELT_PITCH; rx += BELT_PITCH) {
+    if (rx >= BELT_PITCH) rollers.push(num(rx));
+  }
   return (
     <g>
       <rect transform={FRONT(x, y1, z)} width={length} height={4} className="iso-face" />
       <rect transform={TOP(x, y0, z)} width={length} height={y1 - y0} className="iso-face iso-face--top" />
       <g transform={TOP(x, y0, z)}>
-        {Array.from({ length: Math.floor(length / 8) - 1 }, (_, k) => (
-          <line key={k} className="iso-detail" x1={(k + 1) * 8} y1={3} x2={(k + 1) * 8} y2={y1 - y0 - 3} />
+        {rollers.map((rx, k) => (
+          <line key={k} className="iso-detail" x1={rx} y1={3} x2={rx} y2={y1 - y0 - 3} />
         ))}
       </g>
     </g>
@@ -408,11 +423,17 @@ function Pipeline({ time }) {
 }
 
 // The dotted hairline a human-approved package follows from the ESCALATE pad,
-// around the pads, to main (the APPROVE pad), with an arrowhead into main.
-function HumanRoute() {
+// around the pads, to main (the APPROVE pad), with an arrowhead into main. Its
+// dots travel toward main.
+function HumanRoute({ time }) {
   return (
     <g>
-      <path d={pathOf(HUMAN_ROUTE)} className="iso-wire iso-branch" strokeDasharray="2 4" />
+      <path
+        d={pathOf(HUMAN_ROUTE)}
+        className="iso-wire iso-branch"
+        strokeDasharray="2 4"
+        strokeDashoffset={-treadOffset(time, DOT_PERIOD, WIRE_PERIOD_MS)}
+      />
       <path d={pathOf(forkArrow(HUMAN_ROUTE))} className="iso-wire iso-branch" />
     </g>
   );
@@ -451,12 +472,12 @@ function IsoFloor({ active, frame, box, time }) {
         ) : (
           <g key={key}>
             <Station station={STATIONS[i]} stage={STAGES[i]} lit={i === active ? lit : 0} />
-            {i + 1 < STATIONS.length && <Belt from={STATIONS[i]} to={STATIONS[i + 1]} />}
+            {i + 1 < STATIONS.length && <Belt from={STATIONS[i]} to={STATIONS[i + 1]} time={time} />}
           </g>
         ),
       )}
-      <ApprovalFork hot={active === OUTCOME} />
-      {time !== undefined && <HumanRoute />}
+      <ApprovalFork hot={active === OUTCOME} time={time} />
+      {time !== undefined && <HumanRoute time={time} />}
       {active > 0 && <LitBelt from={STATIONS[active - 1]} to={STATIONS[active]} lit={lit} pulseOffset={pulseOffset} />}
       {/* The package rides at deck height in the front lane. Stations are no taller
           than their decks, and pods stand at the back of a deck, so nothing is ever
