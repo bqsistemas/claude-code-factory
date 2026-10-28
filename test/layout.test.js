@@ -220,3 +220,16 @@ test('AC-7: station hits are clipped to the floor box', () => {
   assert.match(block(css, css.indexOf('.iso-hits {')), /overflow:\s*hidden/);
   for (const attr of ['tabIndex={0}', 'role="button"', 'onClick', 'onKeyDown']) assert.ok(loop.includes(attr));
 });
+
+test('AC-4: the dock caption avatar renders outside the Remotion Player', async () => {
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { StaticOctopus } = await import('../src/game/StaticOctopus.js');
+  const html = renderToStaticMarkup(createElement(StaticOctopus, { name: 'builder', size: 24 }));
+  assert.match(html, /<svg[^>]*class="octo"/);
+  assert.equal(renderToStaticMarkup(createElement(StaticOctopus, { name: 'nobody' })), '');
+  const dock = mainSrc.slice(mainSrc.indexOf('function DockCaption'));
+  const body = dock.slice(0, dock.indexOf('\n}\n'));
+  assert.match(body, /StaticOctopus/);
+  assert.doesNotMatch(body, /<Octopus/);
+});

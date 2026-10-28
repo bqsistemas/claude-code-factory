@@ -7,6 +7,7 @@ import { Player } from '@remotion/player';
 import { AVATARS } from '../../factory/avatars.js';
 import { FactoryLoop } from './FactoryLoop.jsx';
 import { Octopus } from './Octopus.jsx';
+import { StaticOctopus } from './StaticOctopus.js';
 import { captionContent } from './layout.js';
 import { compositionSize } from './scene.js';
 import {
@@ -149,8 +150,8 @@ function DockCaption({ item }) {
           chips.map((chip, i) => {
             const agent = Object.hasOwn(AVATARS, chip.name);
             return (
-              <span key={chip.name} className={agent ? 'game__chip game__chip--agent' : 'game__chip'}>
-                {agent && <Octopus name={chip.name} size={24} offset={i} />}
+              <span key={`-`} className={agent ? 'game__chip game__chip--agent' : 'game__chip'}>
+                {agent && <StaticOctopus name={chip.name} size={24} />}
                 {chip.model ? `${chip.name} · ${chip.model}` : chip.name}
               </span>
             );
