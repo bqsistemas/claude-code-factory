@@ -88,6 +88,8 @@ loop** te devuelve a la pantalla inicial; el recorrido no suma ni resta puntos.
 - Archivo: `factory/board.json`. Con `APPROVE` hace `git merge --no-ff` a `main`. Con
   `ESCALATE` el job queda en `needs-human` y una persona decide con
   `/factory approve <id>` o `/factory rework <id> <nota>`.
+- En la planta, la línea hace una bifurcación después de Resultado: `APPROVE` va a
+  merge a `main` y `ESCALATE` va a `needs-human`.
 
 ## Puntuación
 

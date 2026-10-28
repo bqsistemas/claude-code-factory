@@ -42,6 +42,17 @@ const LABEL_SIZE = 12;
 const CHAR_WIDTH = 0.62 * LABEL_SIZE;
 /** Station labels sit just in front of (down-left of) each station's front-left corner. */
 const LABEL_GAP = 10;
+/** Approval fork: outcome pad size, and its gaps from the outcome station along x and y. */
+const PAD_SIZE = Object.freeze([56, 32, STATION_HEIGHT]);
+const PAD_GAP_X = 28;
+const PAD_GAP_Y = 12;
+/** Where the fork splits: this far in from the outcome deck's right (+x) edge, clear of the package. */
+const FORK_INSET = 18;
+/** How far into its pad a branch wire runs. */
+const BRANCH_REACH = 14;
+/** The APPROVE label floats this high above its pad's back edge; ESCALATE sits this far in front of its pad. */
+const APPROVE_LABEL_LIFT = 34;
+const ESCALATE_LABEL_GAP = 16;
 
 const MAX_SIDE = 1920;
 const FALLBACK_SIZE = Object.freeze({ width: 1280, height: 720 });
@@ -106,15 +117,68 @@ export const REWORK_POINTS = Object.freeze(
   ].map((p) => Object.freeze(p)),
 );
 
+const deepFreeze = (value) => {
+  if (value !== null && typeof value === 'object') {
+    Object.values(value).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+};
+
+/**
+ * The approver's two outcomes, drawn after the last station ("outcome"): the
+ * line splits on its deck into an APPROVE branch to a pad behind the station row
+ * (merge to main) and an ESCALATE branch to a pad in front of it (needs-human).
+ * Each branch wire runs at deck height, so every segment is a straight iso
+ * hairline, and ends over its pad's top face. A pad is an iso box like a station.
+ */
+export const FORK = (() => {
+  const outcome = STATIONS.find((s) => s.id === 'outcome');
+  const [ox, oy] = outcome.position;
+  const [ow, od, oh] = outcome.size;
+  const [w, d, h] = PAD_SIZE;
+  const point = [ox + ow - FORK_INSET, oy + od / 2, oh];
+  const padX = ox + ow + PAD_GAP_X;
+  const branch = (id, decision, label, padY, labelAnchor) => {
+    const laneY = padY + d / 2;
+    return {
+      id,
+      decision,
+      label,
+      pad: { position: [padX, padY, 0], size: [...PAD_SIZE] },
+      points: [[...point], [point[0], laneY, oh], [padX + BRANCH_REACH, laneY, oh]],
+      labelAnchor,
+    };
+  };
+  const approveY = oy - PAD_GAP_Y - d;
+  const escalateY = oy + od + PAD_GAP_Y;
+  return deepFreeze({
+    point,
+    branches: [
+      branch('approve', 'APPROVE', 'APPROVE: merge a main', approveY, [padX + w, approveY, h + APPROVE_LABEL_LIFT]),
+      branch('escalate', 'ESCALATE', 'ESCALATE: needs-human', escalateY, [
+        padX + w + ESCALATE_LABEL_GAP,
+        escalateY + d + ESCALATE_LABEL_GAP,
+        0,
+      ]),
+    ],
+  });
+})();
+
+const padFootprints = FORK.branches.map(({ pad: { position, size } }) => [
+  position[0],
+  position[1],
+  position[0] + size[0],
+  position[1] + size[1],
+]);
 const last = STATIONS[STATIONS.length - 1];
-/** The ground plate under the whole floor: [x, y, z] corner and [w, d, h] size. */
+const plateX1 = Math.max(last.position[0] + last.size[0], ...padFootprints.map((f) => f[2])) + PLATE_MARGIN;
+const plateY0 = Math.min(-REWORK_BACK, ...padFootprints.map((f) => f[1])) - PLATE_MARGIN;
+const plateY1 = Math.max(STATION_DEPTH, ...padFootprints.map((f) => f[3])) + PLATE_MARGIN;
+/** The ground plate under the whole floor (stations, rework loop, fork pads): [x, y, z] corner and [w, d, h] size. */
 export const PLATE = Object.freeze({
-  position: Object.freeze([-PLATE_MARGIN, -REWORK_BACK - PLATE_MARGIN, -PLATE_THICKNESS]),
-  size: Object.freeze([
-    last.position[0] + last.size[0] + 2 * PLATE_MARGIN,
-    STATION_DEPTH + REWORK_BACK + 2 * PLATE_MARGIN,
-    PLATE_THICKNESS,
-  ]),
+  position: Object.freeze([-PLATE_MARGIN, plateY0, -PLATE_THICKNESS]),
+  size: Object.freeze([plateX1 + PLATE_MARGIN, plateY1 - plateY0, PLATE_THICKNESS]),
 });
 
 /**
@@ -164,9 +228,20 @@ function labelPoints(i) {
   return [anchor, [anchor[0] - a, anchor[1] + a, 0], [anchor[0], anchor[1], LABEL_SIZE]];
 }
 
+// A fork label is drawn flat on screen and centred on its anchor (textAnchor middle).
+function forkLabelPoints({ label, labelAnchor: [x, y, z] }) {
+  const a = (label.length * CHAR_WIDTH) / 2 / (2 * COS);
+  return [
+    [x - a, y + a, z],
+    [x + a, y - a, z],
+    [x, y, z + LABEL_SIZE],
+  ];
+}
+
 /**
  * The viewBox that frames the whole floor: every station box up to the tallest
- * deck part, the rework loop, the ground plate, and the station labels.
+ * deck part, the rework loop, the ground plate, the station labels, and the
+ * approval fork (pads, branch wires, and labels).
  */
 export const FLOOR_VIEWBOX = Object.freeze(
   isoFrame([
@@ -174,6 +249,12 @@ export const FLOOR_VIEWBOX = Object.freeze(
     ...REWORK_POINTS,
     ...boxCorners(PLATE.position, PLATE.size),
     ...STATIONS.flatMap((_, i) => labelPoints(i)),
+    ...FORK.branches.flatMap((b) => [
+      ...boxCorners(b.pad.position, b.pad.size),
+      ...b.points,
+      b.labelAnchor,
+      ...forkLabelPoints(b),
+    ]),
   ]),
 );
 

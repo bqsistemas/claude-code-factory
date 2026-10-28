@@ -13,6 +13,7 @@ import { Octopus } from './Octopus.jsx';
 import {
   FLOOR,
   FLOOR_VIEWBOX,
+  FORK,
   PLATE,
   REWORK_POINTS,
   STATIONS,
@@ -187,6 +188,60 @@ function ReworkLoop() {
   );
 }
 
+// The approval fork after "Resultado": a decision diamond on the outcome deck
+// and two dotted branch wires, APPROVE to a pad behind the line (merge to main)
+// and ESCALATE to a pad in front of it (needs-human). The pads are drawn with the
+// stations, in depth order; this part rides at deck height on top of them. The
+// tour does not know the real decision, so neither branch is chosen; when the
+// current stage is "outcome" the diamond and both wires light up together.
+// Half the side of the decision diamond. It is a square on the deck with its
+// edges along x and y: in iso projection that reads as a diamond on screen (a
+// square turned 45 degrees on the deck would project to a flat rectangle).
+const FORK_DIAMOND = 14;
+const ARROW = { back: 8, half: 5 };
+
+function forkArrow(points) {
+  const end = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const axis = end[0] !== prev[0] ? 0 : 1;
+  const dir = Math.sign(end[axis] - prev[axis]);
+  const side = (s) => end.map((v, k) => (k === axis ? v - dir * ARROW.back : k === 1 - axis ? v + s * ARROW.half : v));
+  return [side(-1), end, side(1)];
+}
+
+function ApprovalFork({ hot }) {
+  const [px, py, pz] = FORK.point;
+  const r = FORK_DIAMOND;
+  const diamond = [
+    [px - r, py - r, pz],
+    [px + r, py - r, pz],
+    [px + r, py + r, pz],
+    [px - r, py + r, pz],
+  ];
+  return (
+    <g>
+      {FORK.branches.map((branch) => (
+        <g key={branch.id}>
+          <path d={pathOf(branch.points)} className={cx('iso-wire iso-branch', hot && 'iso-hot')} strokeDasharray="2 4" />
+          <path d={pathOf(forkArrow(branch.points))} className={cx('iso-wire iso-branch', hot && 'iso-hot')} />
+        </g>
+      ))}
+      <path d={`${pathOf(diamond)}Z`} className={cx('iso-face iso-face--top iso-fork', hot && 'iso-hot')} />
+    </g>
+  );
+}
+
+function ForkLabels() {
+  return FORK.branches.map((branch) => {
+    const [lx, ly] = at(branch.labelAnchor);
+    return (
+      <text key={branch.id} x={lx} y={ly} textAnchor="middle" className="iso-label">
+        {branch.label}
+      </text>
+    );
+  });
+}
+
 // The belt from a station to the next one: a flat strip at deck height, with an
 // edge strip on its front and roller hairlines across it.
 function Belt({ from, to }) {
@@ -306,11 +361,14 @@ function JobPackage({ position }) {
   );
 }
 
-// Paint order is the only depth sort: back to front, smaller x + y first.
-const PAINT_ORDER = STATIONS.map((_, i) => i).sort((a, b) => {
-  const depth = (i) => STATIONS[i].position[0] + STATIONS[i].position[1];
-  return depth(a) - depth(b);
-});
+// Paint order is the only depth sort: back to front, smaller x + y first. The
+// fork pads join the stations here, so the APPROVE pad behind the line and the
+// ESCALATE pad in front of it are each painted in their right place.
+const PAINT_ORDER = [
+  ...STATIONS.map((station, i) => ({ key: station.id, position: station.position, station: i })),
+  ...FORK.branches.map((branch) => ({ key: `pad-${branch.id}`, position: branch.pad.position, pad: branch.pad })),
+].sort((a, b) => a.position[0] + a.position[1] - (b.position[0] + b.position[1]));
+const OUTCOME = STATIONS.findIndex((station) => station.id === 'outcome');
 
 function IsoFloor({ active, frame, box }) {
   const current = STAGES[active];
@@ -330,12 +388,17 @@ function IsoFloor({ active, frame, box }) {
       <Filters />
       <GroundPlate />
       <ReworkLoop />
-      {PAINT_ORDER.map((i) => (
-        <g key={STATIONS[i].id}>
-          <Station station={STATIONS[i]} stage={STAGES[i]} lit={i === active ? lit : 0} />
-          {i + 1 < STATIONS.length && <Belt from={STATIONS[i]} to={STATIONS[i + 1]} />}
-        </g>
-      ))}
+      {PAINT_ORDER.map(({ key, station: i, pad }) =>
+        pad ? (
+          <IsoBox key={key} position={pad.position} size={pad.size} />
+        ) : (
+          <g key={key}>
+            <Station station={STATIONS[i]} stage={STAGES[i]} lit={i === active ? lit : 0} />
+            {i + 1 < STATIONS.length && <Belt from={STATIONS[i]} to={STATIONS[i + 1]} />}
+          </g>
+        ),
+      )}
+      <ApprovalFork hot={active === OUTCOME} />
       {active > 0 && <LitBelt from={STATIONS[active - 1]} to={STATIONS[active]} lit={lit} pulseOffset={pulseOffset} />}
       {/* The package rides at deck height in the front lane. Stations are no taller
           than their decks, and pods stand at the back of a deck, so nothing is ever
@@ -349,6 +412,7 @@ function IsoFloor({ active, frame, box }) {
           </text>
         );
       })}
+      <ForkLabels />
     </svg>
   );
 }
