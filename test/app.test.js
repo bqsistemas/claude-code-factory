@@ -759,3 +759,106 @@ describe('job 010: living factory pipeline', () => {
     }
   });
 });
+
+describe('job 011: keep the tour pipeline running, with moving belts', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+  // The source of a top-level function, up to the next top-level function, const, or export.
+  const topLevel = (source, name) =>
+    source.match(new RegExp(`^function ${name}\\b[\\s\\S]*?(?=^(?:function|export|const)\\b)`, 'm'))?.[0] ?? '';
+  // A <Player ... /> element with its // comments removed, so only real props remain.
+  const playerIn = (source) => (source.match(/<Player\b[\s\S]*?\/>/)?.[0] ?? '').replace(/\/\/.*$/gm, '');
+  const LOOP_PROP = /\sloop(?:=\{true\})?(?=[\s/>])/;
+
+  test('AC-1: the tour Player loops over TOUR_PLAYER_FRAMES; the quiz Player does not loop', async () => {
+    const main = await read('../src/game/main.jsx');
+    const slack = main.match(/^const TOUR_PLAYER_FRAMES = TOUR_FRAMES \+ (\d+);/m);
+    assert.ok(slack, 'main.jsx defines TOUR_PLAYER_FRAMES as TOUR_FRAMES + N');
+    const n = Number(slack[1]);
+    assert.ok(Number.isInteger(n) && n >= 1 && n <= 60, `N = ${n} is an integer from 1 to 60`);
+
+    const tourPlayer = playerIn(topLevel(main, 'TourScreen'));
+    assert.ok(tourPlayer.length > 0, 'TourScreen renders a <Player');
+    assert.match(tourPlayer, LOOP_PROP, 'the tour Player has a loop prop');
+    assert.match(tourPlayer, /durationInFrames=\{TOUR_PLAYER_FRAMES\}/, 'the tour Player runs TOUR_PLAYER_FRAMES');
+
+    const quizPlayer = playerIn(topLevel(main, 'StagePlayer'));
+    assert.ok(quizPlayer.length > 0, 'StagePlayer renders a <Player');
+    assert.doesNotMatch(quizPlayer, LOOP_PROP, 'the quiz Player has no loop prop');
+    assert.match(quizPlayer, /durationInFrames=\{DURATION\}/, 'the quiz Player keeps DURATION');
+  });
+
+  test('AC-2: the step timer still drives the tour; every Player keeps its audio and controls settings', async () => {
+    const main = await read('../src/game/main.jsx');
+    const tour = topLevel(main, 'TourScreen');
+    for (const text of ['seekTo(0)', '.play()', '.pause()', 'seekTo(TOUR_FRAMES - 1)', 'setTimeout(', 'TOUR_STEP_MS']) {
+      assert.ok(tour.includes(text), `TourScreen contains ${text}`);
+    }
+    assert.ok(!tour.includes('TOUR_PLAYER_FRAMES - 1'), 'TourScreen never seeks to the end of the longer Player');
+    assert.match(playerIn(tour), /pipeline:\s*true/, 'the tour Player passes pipeline: true');
+
+    const players = main.match(/<Player\b[\s\S]*?\/>/g) ?? [];
+    assert.ok(players.length >= 2, 'quiz and tour Players');
+    for (const player of players) {
+      assert.match(player, /numberOfSharedAudioTags=\{0\}/, 'Player keeps numberOfSharedAudioTags={0}');
+      assert.doesNotMatch(player, /\bcontrols\b/, 'Player has no controls prop');
+    }
+  });
+
+  test('AC-4: belts, fork branches, and the human route move with the frame; the rework loop stays still', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    const pipelineImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/pipeline\.js'/)?.[1] ?? '';
+    for (const name of ['treadOffset', 'BELT_PITCH', 'BELT_PERIOD_MS', 'WIRE_PERIOD_MS']) {
+      assert.match(pipelineImport, new RegExp(`\\b${name}\\b`), `FactoryLoop imports ${name} from ./pipeline.js`);
+    }
+    const belt = topLevel(loop, 'Belt');
+    assert.ok(belt.length > 0, 'FactoryLoop.jsx has a top-level Belt');
+    for (const text of ['treadOffset', 'BELT_PITCH', 'BELT_PERIOD_MS']) {
+      assert.ok(belt.includes(text), `Belt contains ${text}`);
+    }
+    for (const name of ['ApprovalFork', 'HumanRoute']) {
+      const source = topLevel(loop, name);
+      assert.ok(source.length > 0, `FactoryLoop.jsx has a top-level ${name}`);
+      for (const text of ['strokeDashoffset', 'treadOffset', 'WIRE_PERIOD_MS']) {
+        assert.ok(source.includes(text), `${name} contains ${text}`);
+      }
+    }
+    const rework = topLevel(loop, 'ReworkLoop');
+    assert.ok(rework.length > 0, 'FactoryLoop.jsx has a top-level ReworkLoop');
+    for (const text of ['treadOffset', 'strokeDashoffset']) {
+      assert.ok(!rework.includes(text), `ReworkLoop does not contain ${text}`);
+    }
+    const floor = topLevel(loop, 'IsoFloor');
+    for (const name of ['Belt', 'ApprovalFork', 'HumanRoute']) {
+      assert.match(floor, new RegExp(`<${name}\\b[^>]*\\btime=`), `IsoFloor renders <${name} with a time= prop`);
+    }
+  });
+
+  test('AC-5: the quest log gains the moving belts item; /game keeps its CSP and markup; no new public files', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    for (const text of [
+      'Keep the factory belts running',
+      'Watch the living factory pipeline',
+      'See the approval fork on the factory floor',
+      'Take the guided factory loop tour',
+      'Light up the iso-glow factory floor',
+      'Follow the labeled factory flow',
+      'Tour the 3D factory floor',
+      'Meet the octopus agent crew',
+      'Play the factory learning game',
+      'Build the landing page',
+    ]) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+
+    const res = await fetch(`${baseUrl}/game`);
+    assert.equal(res.headers.get('content-security-policy'), "default-src 'self'", 'same CSP header');
+    const html = await res.text();
+    assert.equal(html.match(/<script/gi).length, 1, 'exactly one script');
+    assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
+
+    const files = (await readdir(new URL('../public/', import.meta.url))).sort();
+    assert.deepEqual(files, ['game.html', 'game.js', 'index.html', 'styles.css'], 'no new files under public/');
+  });
+});
