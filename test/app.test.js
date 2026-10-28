@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -149,4 +149,74 @@ test('HEAD / and HEAD /styles.css return headers with an empty body', async () =
     assert.match(res.headers['content-type'], type, `${path} content-type`);
     assert.equal(res.body, '', `${path} body`);
   }
+});
+
+describe('job 002: Remotion factory learning game', () => {
+  const gameScriptTag = '<script type="module" src="/game.js"></script>';
+
+  test('AC-1: package.json keeps Remotion, React, and esbuild in devDependencies and adds build:game', async () => {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+    for (const name of ['remotion', '@remotion/player', 'react', 'react-dom', 'esbuild']) {
+      assert.ok(pkg.devDependencies?.[name], `${name} is a devDependency`);
+    }
+    assert.match(pkg.devDependencies.remotion, /^\^?4\./, 'remotion 4.x');
+    assert.equal(pkg.devDependencies['@remotion/player'], pkg.devDependencies.remotion, 'player matches remotion');
+    assert.ok(!pkg.dependencies || Object.keys(pkg.dependencies).length === 0, 'no runtime dependencies');
+    assert.equal(pkg.scripts?.test, 'node --test test/');
+    const build = pkg.scripts?.['build:game'] ?? '';
+    assert.match(build, /src\/game\/main\.jsx/, 'build:game reads src/game/main.jsx');
+    assert.match(build, /public\/game\.js/, 'build:game writes public/game.js');
+    const gitignore = await readFile(new URL('../.gitignore', import.meta.url), 'utf8');
+    assert.match(gitignore, /^node_modules\/$/m, '.gitignore has node_modules/');
+  });
+
+  test('AC-6: /game and /game.js are served with the right types, methods, and headers', async () => {
+    const page = await fetch(`${baseUrl}/game`);
+    assert.equal(page.status, 200);
+    assert.match(page.headers.get('content-type'), /^text\/html/);
+    const html = await page.text();
+    assert.match(html, /lang="es"/);
+    assert.match(html, /id="game"/);
+    assert.match(html, /id="score"/);
+    assert.ok(html.includes(gameScriptTag), 'module script tag');
+    assert.equal(html.match(/<script/gi).length, 1, 'exactly one script');
+    assert.doesNotMatch(html, /<script(?![^>]*\ssrc=)/i, 'no inline script');
+    assert.doesNotMatch(html, /\sstyle="/i, 'no inline style attributes');
+    assert.match(html, /<a\s[^>]*href="\/"/, 'link back to /');
+
+    const bundle = await fetch(`${baseUrl}/game.js`);
+    assert.equal(bundle.status, 200);
+    assert.match(bundle.headers.get('content-type'), /^text\/javascript/);
+    assert.ok((await bundle.text()).length > 0, 'non-empty bundle');
+
+    for (const [path, type] of [['/game', /^text\/html/], ['/game.js', /^text\/javascript/]]) {
+      const head = await rawRequest('HEAD', path);
+      assert.equal(head.status, 200, `HEAD ${path} status`);
+      assert.match(head.headers['content-type'], type, `HEAD ${path} type`);
+      assert.equal(head.body, '', `HEAD ${path} empty body`);
+      assertSecurityHeaders(head.headers, `HEAD ${path}`);
+
+      const post = await rawRequest('POST', path);
+      assert.equal(post.status, 405, `POST ${path} status`);
+      assert.equal(post.headers.allow, 'GET, HEAD', `POST ${path} Allow`);
+      assertSecurityHeaders(post.headers, `POST ${path}`);
+
+      const get = await rawRequest('GET', path);
+      assertSecurityHeaders(get.headers, `GET ${path}`);
+    }
+  });
+
+  test('AC-7: the landing page links to /game without scripts, and the game sources use Remotion', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    assert.ok(items.length >= 2, 'a new quest item was added');
+    assert.ok(items.some((li) => /<a href="\/game">/.test(li)), 'a quest item links to /game');
+    assert.doesNotMatch(body, /<script/i, 'landing page has no scripts');
+
+    const main = await readFile(new URL('../src/game/main.jsx', import.meta.url), 'utf8');
+    const loop = await readFile(new URL('../src/game/FactoryLoop.jsx', import.meta.url), 'utf8');
+    assert.match(main, /from ['"]@remotion\/player['"]/, 'main.jsx imports @remotion/player');
+    assert.match(loop, /from ['"]remotion['"]/, 'FactoryLoop.jsx imports remotion');
+  });
 });
