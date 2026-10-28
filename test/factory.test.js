@@ -59,7 +59,12 @@ test('AC-8: config.json runs 3 jobs at a time and protects the spine tests; pric
 test('AC-8: checks.sh and every factory/bin script are executable; checks.sh runs npm test', () => {
   const exec = (rel) => {
     accessSync(join(repo, rel), constants.X_OK);
-    const mode = execFileSync('git', ['ls-files', '-s', rel], { cwd: repo, encoding: 'utf8' }).split(' ')[0];
+    let mode = '';
+    try {
+      mode = execFileSync('git', ['ls-files', '-s', rel], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split(' ')[0];
+    } catch {
+      // not a git checkout: the file-system check above is enough
+    }
     if (mode) assert.equal(mode, '100755', `${rel} is committed as executable`);
   };
   exec('factory/checks.sh');
