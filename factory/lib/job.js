@@ -29,7 +29,7 @@ export { parseIntake };
 export const STAGES = Object.freeze(STAGE_COLUMNS.map(([stage]) => stage));
 const LABEL = { needsInfo: 'factory:needs-info', needsHuman: 'factory:needs-human' };
 // Stages a job can be escalated from with --note.
-const ESCALATABLE = ['intake', 'spec', 'build', 'gate', 'review', 'approve', 'merging'];
+const ESCALATABLE = ['intake', 'spec', 'build', 'gate', 'review', 'approve', 'merging', 'awaiting-merge'];
 
 // --- context, files, board --------------------------------------------------
 
@@ -279,7 +279,7 @@ function finish(c, job, stage, note) {
   removeWorktree(c, job);
 }
 
-/** approve → merging → merged | needs-human. Saves `merging` first so the board shows it. */
+/** approve → merging → merged | awaiting-merge | needs-human. Saves `merging` first so the board shows it. */
 function merge(c, job) {
   const base = c.config.base ?? 'origin/main';
   const branch = `factory/${job.id}`;
@@ -312,10 +312,31 @@ function merge(c, job) {
   if (head.status !== 0) return stop('git rev-parse HEAD', why(head));
   res = run(c.gh, ['pr', 'ready', String(job.pr)], { cwd: c.root });
   if (res.status !== 0) return stop('gh pr ready', why(res));
+  // Only a missing key or boolean true merges; any other value means the factory does not.
+  const autoMerge = c.config.auto_merge === undefined || c.config.auto_merge === true;
+  if (!autoMerge) {
+    const body = `${marker('note', job.id)}\nThe factory approved PR #${job.pr}, but \`auto_merge\` is off, so the factory will not merge it. `
+      + 'A reviewer should review and merge it; the next `/factory run` then marks the job merged.\n';
+    try {
+      ghWithBody(c, ['pr', 'comment', String(job.pr)], body);
+    } catch (err) {
+      return stop('gh pr comment', err.message);
+    }
+    job.stage = 'awaiting-merge';
+    job.note = `waiting for a reviewer to merge PR #${job.pr}`;
+    return job;
+  }
   res = run(c.gh, ['pr', 'merge', String(job.pr), '--merge', '--match-head-commit', head.stdout.trim()], { cwd: c.root });
   if (res.status !== 0) return stop('gh pr merge', why(res));
   finish(c, job, 'merged', `merged PR #${job.pr}`);
   return job;
+}
+
+/** Refuses unless job.pr is MERGED on GitHub; then finishes the job as merged. */
+function finishIfPrMerged(c, job, note, waitingHint = '') {
+  const { state } = JSON.parse(gh(c, ['pr', 'view', String(job.pr), '--json', 'state']));
+  if (state !== 'MERGED') throw new Refused(`PR #${job.pr} is ${state}, not MERGED${waitingHint}`);
+  finish(c, job, 'merged', note);
 }
 
 function reworkNote(c, job) {
@@ -457,9 +478,14 @@ const TRANSITIONS = {
   },
   'needs-human>merged'(c, job) {
     if (!job.pr) throw new Refused(`no PR yet; to continue, run: factory/bin/job ${job.id} to ${job.parked_from ?? 'intake'}`);
-    const { state } = JSON.parse(gh(c, ['pr', 'view', String(job.pr), '--json', 'state']));
-    if (state !== 'MERGED') throw new Refused(`PR #${job.pr} is ${state}, not MERGED`);
-    finish(c, job, 'merged', `PR #${job.pr} merged by a human`);
+    finishIfPrMerged(c, job, `PR #${job.pr} merged by a human`);
+  },
+  'approve>merged'(c, job) {
+    if (!job.pr) throw new Refused('the job has no PR');
+    finishIfPrMerged(c, job, `PR #${job.pr} merged outside the factory`);
+  },
+  'awaiting-merge>merged'(c, job) {
+    finishIfPrMerged(c, job, `PR #${job.pr} merged outside the factory`, '; still waiting for a reviewer to merge it');
   },
 };
 

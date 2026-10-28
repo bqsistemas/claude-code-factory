@@ -103,3 +103,11 @@ test('AC-8: SKILL.md documents the v2 commands and keeps the v1 rules', () => {
     assert.ok(!skill.includes(text), `SKILL.md does not contain ${text}`);
   }
 });
+
+test('AC-8: config.json has auto_merge true and SKILL.md documents auto_merge, awaiting-merge and the stale-main check', () => {
+  assert.equal(JSON.parse(read('factory/config.json')).auto_merge, true);
+  const skill = read('.claude/skills/factory/SKILL.md');
+  for (const text of ['git rev-list --count origin/main..main', 'awaiting-merge', 'auto_merge']) {
+    assert.ok(skill.includes(text), `SKILL.md contains ${text}`);
+  }
+});

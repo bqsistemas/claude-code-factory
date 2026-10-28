@@ -30,6 +30,7 @@ export const STAGE_COLUMNS = Object.freeze([
   ['review', 'Review'],
   ['approve', 'Approve'],
   ['merging', 'Merging'],
+  ['awaiting-merge', 'Awaiting merge'],
   ['needs-human', 'Needs human'],
   ['merged', 'Merged'],
   ['rejected', 'Rejected'],

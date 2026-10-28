@@ -182,7 +182,7 @@ describe('job 012: factory v2 board', () => {
       activeAgents({ stage: 'review', reviews: { code: 'pending', ui: 'pending', ux: 'PASS', security: 'pending' } }),
       ['review-security', 'review-ui', 'review-code'],
     );
-    for (const stage of ['gate', 'merging', 'needs-info', 'needs-human', 'merged', 'rejected', 'approval']) {
+    for (const stage of ['gate', 'merging', 'awaiting-merge', 'needs-info', 'needs-human', 'merged', 'rejected', 'approval']) {
       assert.deepEqual(activeAgents({ stage }), [], stage);
     }
     for (const job of [null, {}, { stage: 7 }, { stage: 'review', reviews: [] }]) {
@@ -190,14 +190,20 @@ describe('job 012: factory v2 board', () => {
     }
   });
 
-  test('AC-7: STAGE_COLUMNS lists the 11 stages in order, needs-human before merged', () => {
+  test('AC-7: STAGE_COLUMNS lists the 12 stages in order, awaiting-merge after merging', () => {
     assert.deepEqual(STAGE_COLUMNS.map(([stage]) => stage), [
-      'intake', 'needs-info', 'spec', 'build', 'gate', 'review', 'approve', 'merging', 'needs-human', 'merged', 'rejected',
+      'intake', 'needs-info', 'spec', 'build', 'gate', 'review', 'approve', 'merging', 'awaiting-merge', 'needs-human', 'merged', 'rejected',
     ]);
+    assert.ok(STAGE_COLUMNS.some(([stage, label]) => stage === 'awaiting-merge' && label === 'Awaiting merge'));
     for (const [stage, label] of STAGE_COLUMNS) {
       assert.equal(typeof label, 'string', `${stage} label`);
       assert.ok(label.trim(), `${stage} label is non-empty`);
     }
+  });
+
+  test('AC-7: dashboard.html hints that an awaiting-merge job waits for a reviewer', async () => {
+    const html = await readFile(new URL('../factory/dashboard.html', import.meta.url), 'utf8');
+    assert.ok(html.includes('waiting for a reviewer to merge the PR'));
   });
 
   test('AC-7: roundChipsHtml puts the gate chip first and renders only the review keys present', () => {

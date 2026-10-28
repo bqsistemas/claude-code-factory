@@ -3,6 +3,7 @@
   "base": "origin/main",
   "concurrency": 3,
   "max_rounds": 3,
+  "auto_merge": true,
   "models": { "intake": "fable", "spec-writer": "opus", "approver": "opus" },
   "routing": {
     "builder": { "low": "sonnet", "medium": "sonnet", "high": "opus" },
