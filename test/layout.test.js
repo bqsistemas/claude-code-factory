@@ -65,6 +65,9 @@ test('job 019: the wide CSS is two columns that fill the height, text left and s
 });
 
 test('job 019: wide, the composition is the whole right column and the plant is centred in it', () => {
+  let centred = 0;
+  let clamped = 0;
+  let checked = 0;
   for (const item of ITEMS) {
     for (const [w, h] of WIDE_SIZES) {
       const column = rightColumn(w, h);
@@ -75,9 +78,18 @@ test('job 019: wide, the composition is the whole right column and the plant is 
       if (view.width >= full.width - 1e-9 && view.height >= full.height - 1e-9) {
         assert.ok(Math.abs(view.x + view.width / 2 - (full.x + full.width / 2)) < 1e-9, `${w}x${h}: centred in x`);
         assert.ok(Math.abs(view.y + view.height / 2 - (full.y + full.height / 2)) < 1e-9, `${w}x${h}: centred in y`);
+        centred += 1;
+      } else {
+        assert.ok(view.width >= full.width || (view.x >= full.x - 1e-9 && view.x + view.width <= full.x + full.width + 1e-9), `${w}x${h}: clamped in x`);
+        assert.ok(view.height >= full.height || (view.y >= full.y - 1e-9 && view.y + view.height <= full.y + full.height + 1e-9), `${w}x${h}: clamped in y`);
+        clamped += 1;
       }
+      checked += 1;
     }
   }
+  assert.equal(checked, ITEMS.length * WIDE_SIZES.length, 'every item and size was checked');
+  assert.equal(centred + clamped, checked);
+  assert.ok(centred > 0, 'the plant fits and is centred on most wide sizes');
 });
 
 function NODES_POINT(step) {
@@ -195,12 +207,13 @@ test('job 019: the tour controls are small accessible icon buttons in one row', 
   const icon = mainSrc.slice(mainSrc.indexOf('function IconButton'));
   assert.match(icon, /aria-label=\{label\}/);
   assert.match(icon, /title=\{label\}/);
-  assert.match(icon, /aria-pressed=\{pressed\}/);
+  assert.doesNotMatch(icon, /aria-pressed/, 'the flipping label carries the state');
   const size = rule(css, '.game__icon-button');
   assert.match(size, /width:\s*2\.25rem/);
   assert.match(size, /height:\s*2\.25rem/);
   assert.match(rule(css, '.game__icon-button:focus-visible'), /outline:\s*3px solid/);
-  assert.match(rule(css, '.game__icon-button:hover,\n.game__icon-button[aria-pressed=\'true\']:hover'), /var\(--iso-accent\)/);
+  assert.match(rule(css, '.game__icon-button:hover'), /var\(--iso-accent\)/);
+  assert.match(rule(css, '.game__icon-button--on'), /var\(--iso-accent\)/);
 });
 
 test('AC-4: the dock caption avatar renders outside the Remotion Player', async () => {

@@ -27,6 +27,7 @@ import {
   STATIONS,
   TRACKS,
   iso,
+  labelBox,
   labelPosition,
   packagePosition,
   stationOutline,
@@ -472,10 +473,14 @@ const PAINT_ORDER = Object.values(NODES)
   .sort((a, b) => a.order - b.order);
 
 // Flat text at fixed screen positions (see LABELS in scene.js); the one of the lit node is lit.
-function Labels({ litId }) {
+function Labels({ litId, view }) {
   return (
     <g>
       {LABELS.map((item) => {
+        // Where the camera window is narrower than the plant (phones), a label the window
+        // would cut in half is left out.
+        const box = labelBox(item);
+        if (box.x0 < view.x || box.x1 > view.x + view.width || box.y0 < view.y || box.y1 > view.y + view.height) return null;
         const [lx, ly] = labelPosition(item);
         return (
           <text key={item.id} x={num(lx)} y={num(ly)} textAnchor={item.anchor} className={cx('iso-label', item.layer && 'iso-label--layer', item.hot && item.hot === litId && 'iso-hot')}>
@@ -540,7 +545,7 @@ function IsoFloor({ active, frame, box, time, step, view, pkg }) {
       {/* The package rides at deck height; nothing stands in front of it on a deck, and
           bins and bays are lower than the deck, so it is painted after every node. */}
       <Package position={pkg} />
-      <Labels litId={litId} />
+      <Labels litId={litId} view={view} />
     </svg>
   );
 }

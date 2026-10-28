@@ -145,10 +145,11 @@ const ICONS = {
   exit: <path d="M6 6l12 12M18 6L6 18" />,
 };
 
-// A small square icon button with an accessible name. `pressed` is given for toggles.
-function IconButton({ label, icon, onClick, pressed }) {
+// A small square icon button. The accessible name flips with the state ("Pausar" /
+// "Reanudar"), so there is no aria-pressed; `active` only styles the state.
+function IconButton({ label, icon, onClick, active = false }) {
   return (
-    <button type="button" className="game__icon-button" aria-label={label} title={label} aria-pressed={pressed} onClick={onClick}>
+    <button type="button" className={active ? 'game__icon-button game__icon-button--on' : 'game__icon-button'} aria-label={label} title={label} onClick={onClick}>
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         {icon}
       </svg>
@@ -417,13 +418,13 @@ function TourScreen({ onExit, audio }) {
         <div className="game__controls">
           <IconButton
             label={tour.playing ? 'Pausar' : 'Reanudar'}
-            pressed={!tour.playing}
+            active={!tour.playing}
             onClick={() => setTour((t) => togglePlaying(t))}
             icon={tour.playing ? ICONS.pause : ICONS.play}
           />
           <IconButton
             label={soundOn ? 'Silenciar' : 'Activar sonido'}
-            pressed={!soundOn}
+            active={!soundOn}
             onClick={onToggleSound}
             icon={soundOn ? ICONS.sound : ICONS.muted}
           />

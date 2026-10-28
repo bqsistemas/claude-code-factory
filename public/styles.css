@@ -564,14 +564,18 @@ main {
    there is the column's real size. `src/game/layout.js` mirrors the 64rem breakpoint
    and the column widths (splitColumns). */
 @media (min-width: 64rem) {
-  .game-page .game {
+  /* Only the two-column card runs edge to edge; the intro and results keep their padding. */
+  .game-page .game:has(> .game__panel > .game__stage) {
     padding: 0;
   }
 
   .game-page .game__panel:has(> .game__stage) {
     display: grid;
     grid-template-columns: minmax(20rem, 34%) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     grid-template-areas: 'text scene';
+    height: 100%;
+    min-height: 0;
     width: 100%;
     max-width: none;
     max-height: none;
@@ -589,6 +593,7 @@ main {
 
   .game-page .game__stage {
     grid-area: text;
+    min-height: 0;
     display: block;
     border-width: 0 2px 0 0;
     border-radius: 0;
@@ -824,8 +829,12 @@ main {
   stroke-linejoin: round;
 }
 
-.game__icon-button:hover,
-.game__icon-button[aria-pressed='true']:hover {
+.game__icon-button--on {
+  color: var(--iso-accent);
+  border-color: var(--iso-accent-dim);
+}
+
+.game__icon-button:hover {
   color: var(--iso-accent);
   border-color: var(--iso-accent);
 }
