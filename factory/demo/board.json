@@ -1,0 +1,89 @@
+{
+  "updated": "2026-10-27T15:42:10Z",
+  "jobs": [
+    {
+      "id": "001-health-endpoint",
+      "title": "Health endpoint",
+      "branch": "factory/001-health-endpoint",
+      "stage": "merged",
+      "round": 1,
+      "max_round": 2,
+      "reviews": { "security": "PASS", "ux": "PASS", "ui": "PASS", "code": "PASS" },
+      "history": [],
+      "decision": "APPROVE",
+      "builder": "builder-001-health-endpoint",
+      "note": "All checks green.",
+      "updated": "2026-10-27T11:20:00Z"
+    },
+    {
+      "id": "002-csv-export",
+      "title": "CSV export",
+      "branch": "factory/002-csv-export",
+      "stage": "approval",
+      "round": 2,
+      "max_round": 2,
+      "reviews": { "security": "PASS", "ux": "PASS", "ui": "PASS", "code": "PASS" },
+      "history": [{ "security": "PASS", "ux": "CHANGES", "ui": "PASS", "code": "PASS" }],
+      "decision": null,
+      "builder": "builder-002-csv-export",
+      "note": "",
+      "updated": "2026-10-27T15:40:00Z"
+    },
+    {
+      "id": "003-rate-limiting",
+      "title": "Rate limiting",
+      "branch": "factory/003-rate-limiting",
+      "stage": "needs-human",
+      "round": 2,
+      "max_round": 2,
+      "reviews": { "security": "PASS", "ux": "PASS", "ui": "PASS", "code": "PASS" },
+      "history": [{ "security": "CHANGES", "ux": "PASS", "ui": "PASS", "code": "CHANGES" }],
+      "decision": "ESCALATE",
+      "builder": "builder-003-rate-limiting",
+      "note": "Adds a new runtime dependency (express-rate-limit); a human should accept it.",
+      "updated": "2026-10-27T15:12:00Z"
+    },
+    {
+      "id": "004-dark-mode",
+      "title": "Dark mode toggle",
+      "branch": "factory/004-dark-mode",
+      "stage": "review",
+      "round": 1,
+      "max_round": 2,
+      "reviews": { "security": "PASS", "ux": "pending", "ui": "CHANGES", "code": "pending" },
+      "history": [],
+      "decision": null,
+      "builder": "builder-004-dark-mode",
+      "note": "",
+      "updated": "2026-10-27T15:42:10Z"
+    },
+    {
+      "id": "005-search-filters",
+      "title": "Search filters",
+      "branch": "factory/005-search-filters",
+      "stage": "build",
+      "round": 0,
+      "max_round": 2,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "builder": "builder-005-search-filters",
+      "note": "",
+      "updated": "2026-10-27T15:38:00Z"
+    },
+    {
+      "id": "006-audit-log",
+      "title": "Audit log",
+      "branch": "factory/006-audit-log",
+      "stage": "spec",
+      "round": 0,
+      "max_round": 2,
+      "reviews": {},
+      "history": [],
+      "decision": null,
+      "builder": "builder-006-audit-log",
+      "note": "",
+      "updated": "2026-10-27T15:41:00Z"
+    }
+  ]
+}

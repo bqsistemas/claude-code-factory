@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Board</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --panel: #ffffff; --ink: #1c1c1e; --muted: #6b6b70; --line: #e4e4e0;
+    --pass: #1d7a45; --pass-bg: #e2f3e8; --changes: #9a4d00; --changes-bg: #fdecd6;
+    --pending: #8a8a90; --alert: #b93a12; --alert-bg: #fff1ea; --chip-bg: #f0f0ed;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111113; --panel: #1a1a1d; --ink: #ececf0; --muted: #9b9ba3; --line: #2b2b30;
+      --pass: #5ee08e; --pass-bg: #123222; --changes: #f7b955; --changes-bg: #3a2a0f;
+      --pending: #74747c; --alert: #ff8a5c; --alert-bg: #2e1a12; --chip-bg: #232327;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  .top { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 22px 24px 6px; }
+  .top h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  .tag { font: 600 10px var(--mono); letter-spacing: .08em; padding: 2px 6px; border-radius: 4px;
+         background: var(--changes-bg); color: var(--changes); }
+  .status { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+                    background: var(--pass); margin-right: 6px; vertical-align: 1px; }
+  .status.off::before { background: var(--alert); }
+
+  .board { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 14px 24px 32px; }
+  @media (max-width: 1100px) { .board { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 640px)  { .board { grid-template-columns: 1fr; padding: 12px 16px 24px; } .top { padding: 18px 16px 4px; } }
+  .col h2 { display: flex; justify-content: space-between; margin: 0 0 8px; font-size: 11px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .col.alert h2 { color: var(--alert); }
+  .lane { display: flex; flex-direction: column; gap: 8px; min-height: 64px; padding: 6px;
+          border-radius: 12px; border: 1px dashed var(--line); }
+  .col.alert .lane { border-color: var(--alert); background: var(--alert-bg); }
+
+  .card { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+          transition: border-color .15s, transform .15s; }
+  .card:hover { border-color: var(--muted); transform: translateY(-1px); }
+  .card:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .card.alert { border-color: var(--alert); box-shadow: 0 0 0 3px var(--alert-bg); }
+  .card.merged { opacity: .7; }
+  .id { font: 11px var(--mono); color: var(--muted); }
+  .title { font-weight: 600; margin: 2px 0 4px; }
+  .rounds { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+  .round { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .round .n { font: 10px var(--mono); color: var(--muted); width: 20px; }
+  .chip { font-size: 10.5px; line-height: 16px; padding: 0 7px; border-radius: 999px;
+          background: var(--chip-bg); color: var(--pending); border: 1px dashed var(--pending); }
+  .chip.PASS { background: var(--pass-bg); color: var(--pass); border: 1px solid transparent; }
+  .chip.CHANGES { background: var(--changes-bg); color: var(--changes); border: 1px solid transparent; }
+  .chip.pending { animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: .4; } }
+  .note { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .card.alert .note { color: var(--alert); }
+  .cmd { display: inline-block; margin-top: 6px; font: 11px var(--mono); padding: 2px 6px; border-radius: 4px;
+         background: var(--alert-bg); color: var(--alert); }
+  .meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+  .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 64px 16px; }
+  code { font: 12px var(--mono); background: var(--chip-bg); padding: 1px 5px; border-radius: 4px; }
+  a { color: inherit; }
+
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.25); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(760px, 100%); display: flex; flex-direction: column;
+            background: var(--panel); border-left: 1px solid var(--line); box-shadow: -16px 0 48px rgba(0,0,0,.14);
+            transform: translateX(100%); transition: transform .22s ease; }
+  .drawer.open { transform: none; }
+  .drawer-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
+  .drawer-head .title { font-size: 16px; margin: 2px 0 0; }
+  .close { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 8px;
+           width: 30px; height: 30px; font-size: 16px; cursor: pointer; }
+  .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 22px; border-bottom: 1px solid var(--line); }
+  .file { font: 11.5px var(--mono); padding: 3px 8px; border-radius: 6px; cursor: pointer;
+          border: 1px solid var(--line); background: none; color: var(--ink); }
+  .file[aria-selected="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .file.missing { opacity: .4; }
+  .doc { flex: 1; overflow: auto; padding: 18px 26px 48px; }
+  .doc h1, .doc h2, .doc h3 { line-height: 1.25; margin: 1.2em 0 .5em; }
+  .doc h1 { font-size: 20px; } .doc h2 { font-size: 15px; } .doc h3 { font-size: 14px; }
+  .doc pre { background: var(--chip-bg); padding: 12px 14px; border-radius: 8px; overflow: auto; }
+  .doc pre code { background: none; padding: 0; }
+  .doc table { border-collapse: collapse; font-size: 13px; }
+  .doc th, .doc td { border: 1px solid var(--line); padding: 4px 10px; text-align: left; }
+  .doc blockquote { margin: 0; padding-left: 12px; border-left: 3px solid var(--line); color: var(--muted); }
+  .verdict { display: inline-block; font: 600 12px var(--mono); letter-spacing: .04em; padding: 4px 10px; border-radius: 6px;
+             background: var(--chip-bg); color: var(--pending); }
+  .verdict.good { background: var(--pass-bg); color: var(--pass); }
+  .verdict.warn { background: var(--changes-bg); color: var(--changes); }
+  .verdict.bad  { background: var(--alert-bg); color: var(--alert); }
+  .missing-doc { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Software Factory</h1>
+  <span class="tag" id="demo" hidden>DEMO</span>
+  <span class="status" id="status">connecting…</span>
+</header>
+<main class="board" id="board"></main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div><div class="id" id="d-id"></div><div class="title" id="d-title"></div></div>
+    <button class="close" id="close" aria-label="Close">×</button>
+  </div>
+  <nav class="files" id="files" role="tablist"></nav>
+  <article class="doc" id="doc"></article>
+</aside>
+
+<script>
+const DEMO = new URLSearchParams(location.search).has('demo');
+const BASE = DEMO ? 'demo/' : '';
+const STAGES = [
+  ['spec', 'Spec'], ['build', 'Build'], ['review', 'Review'],
+  ['approval', 'Approval'], ['needs-human', 'Needs human'], ['merged', 'Merged'],
+];
+const REVIEWERS = ['security', 'ux', 'ui', 'code'];
+
+let board = { jobs: [] }, lastText = '', openJob = null, openFile = null;
+const cache = new Map();
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function ago(iso) {
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (!iso || isNaN(s)) return '';
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+function roundsOf(job) {
+  const rows = [...(job.history || [])];
+  if (job.reviews && Object.keys(job.reviews).length) rows.push(job.reviews);
+  return rows;
+}
+
+function chips(reviews) {
+  const keys = [...REVIEWERS, ...Object.keys(reviews).filter(k => !REVIEWERS.includes(k))];
+  return keys.filter(k => k in reviews)
+    .map(k => `<span class="chip ${esc(reviews[k])}" title="${esc(k)}: ${esc(reviews[k])}">${esc(k)}</span>`).join('');
+}
+
+function card(job) {
+  const alert = job.stage === 'needs-human';
+  const rows = roundsOf(job).map((r, i) =>
+    `<div class="round"><span class="n">R${i + 1}</span>${chips(r)}</div>`).join('');
+  return `<button class="card ${alert ? 'alert' : ''} ${job.stage === 'merged' ? 'merged' : ''}" data-id="${esc(job.id)}">
+    <div class="id">${esc(job.id)}</div>
+    <div class="title">${esc(job.title || job.id)}</div>
+    ${rows ? `<div class="rounds">${rows}</div>` : ''}
+    ${job.note ? `<div class="note">${esc(job.note)}</div>` : ''}
+    ${alert ? `<code class="cmd">/factory approve ${esc(job.id)}</code>` : ''}
+    <div class="meta"><span>${job.round ? `round ${job.round}/${job.max_round ?? 2}` : esc(job.branch || '')}</span>
+      <span>${ago(job.updated)}</span></div>
+  </button>`;
+}
+
+function render() {
+  const jobs = board.jobs || [];
+  if (!jobs.length) {
+    $('board').innerHTML = `<div class="empty">No jobs yet. Run <code>/factory &lt;feature&gt;</code> in Claude Code.
+      ${DEMO ? '' : '<br><br>Or open the <a href="?demo">demo board</a>.'}</div>`;
+    return;
+  }
+  const known = new Set(STAGES.map(s => s[0]));
+  $('board').innerHTML = STAGES.map(([key, label]) => {
+    const list = jobs.filter(j => (known.has(j.stage) ? j.stage : 'spec') === key);
+    return `<section class="col ${key === 'needs-human' && list.length ? 'alert' : ''}">
+      <h2><span>${label}</span><span>${list.length || ''}</span></h2>
+      <div class="lane">${list.map(card).join('')}</div></section>`;
+  }).join('');
+}
+
+async function poll() {
+  try {
+    const res = await fetch(BASE + 'board.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status === 404 ? 'no board.json yet. Run /factory to create it' : `HTTP ${res.status}`);
+    const text = await res.text();
+    const status = $('status');
+    status.className = 'status';
+    if (text !== lastText) {
+      board = JSON.parse(text);   // a half-written file throws and keeps the last good board
+      lastText = text;
+      render();
+      if (openJob) { cache.clear(); openDrawer(openJob, openFile); }
+    }
+    status.textContent = `live · updated ${ago(board.updated) || 'just now'}`;
+  } catch (err) {
+    if (err instanceof SyntaxError && lastText) return;   // mid-write; try again next poll
+    const status = $('status');
+    status.className = 'status off';
+    status.textContent = location.protocol === 'file:'
+      ? 'serve this folder: cd factory && python3 -m http.server 8000'
+      : String(err.message || err);
+    if (!lastText) render();
+  }
+}
+
+// --- drawer -----------------------------------------------------------------
+
+function filesOf(job) {
+  const files = ['feature.md', 'spec.md', 'build.md'];
+  roundsOf(job).forEach((r, i) => {
+    const keys = [...REVIEWERS, ...Object.keys(r).filter(k => !REVIEWERS.includes(k))];
+    keys.forEach(k => files.push(`round-${i + 1}/review-${k}.md`));
+  });
+  files.push('decision.md');
+  return files;
+}
+
+async function load(job, file) {
+  const key = `${job.id}/${file}`;
+  if (!cache.has(key)) {
+    cache.set(key, fetch(`${BASE}jobs/${encodeURIComponent(job.id)}/${file}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.text() : null)).catch(() => null));
+  }
+  return cache.get(key);
+}
+
+async function openDrawer(id, file) {
+  const job = (board.jobs || []).find(j => j.id === id);
+  if (!job) return closeDrawer();
+  openJob = id;
+  $('d-id').textContent = `${job.id} · ${job.branch || ''} · ${job.stage}`;
+  $('d-title').textContent = job.title || job.id;
+  const files = filesOf(job);
+  const texts = await Promise.all(files.map(f => load(job, f)));
+  if (openJob !== id) return;
+  const existing = files.filter((f, i) => texts[i] !== null);
+  openFile = file && files.includes(file) ? file : existing[existing.length - 1] || files[0];
+  $('files').innerHTML = files.map((f, i) =>
+    `<button class="file ${texts[i] === null ? 'missing' : ''}" role="tab" data-file="${esc(f)}"
+      aria-selected="${f === openFile}">${esc(f)}</button>`).join('');
+  const text = texts[files.indexOf(openFile)];
+  $('doc').innerHTML = text === null ? '<p class="missing-doc">Not written yet.</p>' : md(text);
+  $('drawer').classList.add('open');
+  $('drawer').setAttribute('aria-hidden', 'false');
+  $('scrim').classList.add('open');
+}
+
+function closeDrawer() {
+  openJob = openFile = null;
+  $('drawer').classList.remove('open');
+  $('drawer').setAttribute('aria-hidden', 'true');
+  $('scrim').classList.remove('open');
+}
+
+$('board').addEventListener('click', e => {
+  const c = e.target.closest('.card');
+  if (c) openDrawer(c.dataset.id);
+});
+$('files').addEventListener('click', e => {
+  const f = e.target.closest('.file');
+  if (f) openDrawer(openJob, f.dataset.file);
+});
+$('close').addEventListener('click', closeDrawer);
+$('scrim').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+
+// --- tiny markdown renderer (headings, lists, tables, code, quotes) ---------
+
+const TONE = { PASS: 'good', APPROVE: 'good', READY: 'good', CHANGES: 'warn', ESCALATE: 'bad', BLOCKED: 'bad' };
+
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) =>
+      /^(https?:\/\/|#)/.test(u) ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : m);
+}
+
+function table(rows) {
+  const cells = r => r.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  const body = rows.filter(r => !/^\s*\|?\s*:?-{2,}/.test(r)).map(cells);
+  const [head, ...rest] = body;
+  return `<table><thead><tr>${head.map(c => `<th>${inline(c)}</th>`).join('')}</tr></thead>
+    <tbody>${rest.map(r => `<tr>${r.map(c => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function md(src) {
+  const lines = src.replace(/\r/g, '').split('\n');
+  const out = [];
+  const LIST = /^\s*([-*]|\d+\.)\s+/;
+  const START = /^(```|#{1,4}\s|\s*\||>|-{3,}\s*$)/;
+  let i = 0;
+  const first = (lines[0] || '').match(/^(?:(VERDICT|STATUS):\s*)?(PASS|CHANGES|APPROVE|ESCALATE|READY|BLOCKED)\b/);
+  if (first) { out.push(`<span class="verdict ${TONE[first[2]]}">${esc(lines[0])}</span>`); i = 1; }
+  while (i < lines.length) {
+    const l = lines[i];
+    let m;
+    if (!l.trim()) { i++; continue; }
+    if (/^```/.test(l)) {
+      const buf = [];
+      for (i++; i < lines.length && !/^```/.test(lines[i]); i++) buf.push(lines[i]);
+      i++;
+      out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`);
+    } else if ((m = l.match(/^(#{1,4})\s+(.*)/))) {
+      out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); i++;
+    } else if (/^-{3,}\s*$/.test(l)) {
+      out.push('<hr>'); i++;
+    } else if (/^\s*\|/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      out.push(table(rows));
+    } else if (LIST.test(l)) {
+      const tag = /^\s*\d+\./.test(l) ? 'ol' : 'ul', items = [];
+      while (i < lines.length && LIST.test(lines[i])) items.push(lines[i++].replace(LIST, ''));
+      out.push(`<${tag}>${items.map(t => `<li>${inline(t).replace(/^\[([ xX])\]\s/, (_, c) => (c === ' ' ? '☐ ' : '☑ '))}</li>`).join('')}</${tag}>`);
+    } else if (/^>/.test(l)) {
+      const buf = [];
+      while (i < lines.length && /^>/.test(lines[i])) buf.push(lines[i++].replace(/^>\s?/, ''));
+      out.push(`<blockquote>${inline(buf.join(' '))}</blockquote>`);
+    } else {
+      const buf = [l];
+      for (i++; i < lines.length && lines[i].trim() && !START.test(lines[i]) && !LIST.test(lines[i]); i++) buf.push(lines[i]);
+      out.push(`<p>${inline(buf.join(' '))}</p>`);
+    }
+  }
+  return out.join('\n');
+}
+
+$('demo').hidden = !DEMO;
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>
