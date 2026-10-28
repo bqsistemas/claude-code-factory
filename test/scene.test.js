@@ -193,88 +193,63 @@ describe('job 008: guided loop tour', () => {
   });
 });
 
-describe('job 009: approval fork on the iso floor', () => {
-  const { FORK } = scene;
-  const outcome = STATIONS.find((s) => s.id === 'outcome');
-  const deepFrozen = (value, path = 'FORK') => {
-    if (value === null || typeof value !== 'object') return;
-    assert.ok(Object.isFrozen(value), `${path} is frozen`);
-    for (const [key, child] of Object.entries(value)) deepFrozen(child, `${path}.${key}`);
-  };
-  const within = (v, lo, hi) => v >= lo && v <= hi;
+describe('job 016: the plant', () => {
+  const { NODES, TRACKS } = scene;
   const footprint = ({ position: [x, y], size: [w, d] }) => ({ x0: x, x1: x + w, y0: y, y1: y + d });
-  const overlaps = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
-
-  test('AC-1: FORK is deep-frozen with the approve and escalate branches, split on the outcome deck', () => {
-    assert.ok(FORK, 'scene.js exports FORK');
-    deepFrozen(FORK);
-    assert.equal(FORK.branches.length, 2, 'exactly two branches');
-    assert.deepEqual(FORK.branches.map((b) => b.id), ['approve', 'escalate']);
-    assert.deepEqual(FORK.branches.map((b) => b.decision), ['APPROVE', 'ESCALATE']);
-    assert.deepEqual(FORK.branches.map((b) => b.label), ['APPROVE: merge a main', 'ESCALATE: needs-human']);
-
-    const [px, py, pz] = FORK.point;
-    assert.ok(isFiniteTriple(FORK.point), 'FORK.point is a finite triple');
-    assert.ok(within(px, outcome.position[0], outcome.position[0] + outcome.size[0]), `x ${px} inside the outcome footprint`);
-    assert.ok(within(py, outcome.position[1], outcome.position[1] + outcome.size[1]), `y ${py} inside the outcome footprint`);
-    assert.equal(pz, outcome.size[2], 'z is the outcome station height');
-  });
-
-  test('AC-2: each branch wire runs from FORK.point to its pad in straight iso segments', () => {
-    for (const { id, points, pad } of FORK.branches) {
-      assert.ok(Array.isArray(points) && points.length >= 2, `${id} has at least 2 points`);
-      for (const p of points) assert.ok(isFiniteTriple(p), `${id} point ${p} is a finite triple`);
-      assert.deepEqual(points[0], FORK.point, `${id} starts at FORK.point`);
-      const [ex, ey] = points[points.length - 1];
-      const f = footprint(pad);
-      assert.ok(within(ex, f.x0, f.x1) && within(ey, f.y0, f.y1), `${id} ends over its pad`);
-      for (let k = 1; k < points.length; k += 1) {
-        const dx = points[k][0] !== points[k - 1][0];
-        const dy = points[k][1] !== points[k - 1][1];
-        assert.ok(dx !== dy, `${id} segment ${k} changes exactly one of x or y`);
-      }
-    }
-  });
-
-  test('AC-3: the pads stand past the outcome station, approve behind the line and escalate in front, without overlaps', () => {
-    for (const { id, pad } of FORK.branches) {
-      assert.ok(isFiniteTriple(pad.size) && pad.size.every((v) => v > 0), `${id} pad size is 3 finite positive numbers`);
-      assert.ok(isFiniteTriple(pad.position), `${id} pad position is a finite triple`);
-      assert.equal(pad.position[2], 0, `${id} pad stands on the floor`);
-      assert.ok(pad.position[0] >= outcome.position[0] + outcome.size[0], `${id} pad starts past the outcome station`);
-    }
-    const [approve, escalate] = FORK.branches.map((b) => b.pad);
-    assert.ok(approve.position[1] + approve.size[1] <= 0, 'APPROVE pad is behind the station row');
-    assert.ok(escalate.position[1] >= outcome.position[1] + outcome.size[1], 'ESCALATE pad is in front of the station row');
-
-    const boxes = [
-      ...FORK.branches.map((b) => ({ id: `${b.id} pad`, ...footprint(b.pad) })),
-      ...STATIONS.map((s) => ({ id: s.id, ...footprint(s) })),
-    ];
-    for (let i = 0; i < boxes.length; i += 1) {
-      for (let j = i + 1; j < boxes.length; j += 1) {
-        assert.ok(!overlaps(boxes[i], boxes[j]), `${boxes[i].id} and ${boxes[j].id} do not overlap`);
-      }
-    }
-  });
-
-  test('AC-4: FLOOR_VIEWBOX frames the pads, wires and labels, and PLATE covers both pads', () => {
+  const onPlate = ([x, y], f = footprint(PLATE)) => x >= f.x0 && x <= f.x1 && y >= f.y0 && y <= f.y1;
+  const insideView = (p) => {
+    const [sx, sy] = iso(p);
     const { x, y, width, height } = FLOOR_VIEWBOX;
-    const insideView = (p, label) => {
-      const [sx, sy] = iso(p);
-      assert.ok(sx >= x && sx <= x + width && sy >= y && sy <= y + height, `${label} ${p} projects inside FLOOR_VIEWBOX`);
-    };
-    const plate = footprint(PLATE);
-    for (const { id, pad, points, labelAnchor } of FORK.branches) {
-      for (const corner of [0, 1, 2, 3, 4, 5, 6, 7]) {
-        insideView(pad.position.map((v, k) => v + ((corner >> k) & 1) * pad.size[k]), `${id} pad corner`);
+    return sx >= x && sx <= x + width && sy >= y && sy <= y + height;
+  };
+  const corners = (position, size) => [0, 1, 2, 3, 4, 5, 6, 7].map((c) => position.map((v, k) => v + ((c >> k) & 1) * size[k]));
+
+  test('AC-2: NODES hold the stations, the bins and the bays', () => {
+    assert.ok(Object.isFrozen(NODES));
+    for (const stage of STAGES) assert.equal(NODES[stage.id]?.kind, 'station', `${stage.id} is a station node`);
+    for (const id of ['bin-needs-info', 'bin-reject']) assert.equal(NODES[id]?.kind, 'bin', id);
+    for (const id of ['bay-merged', 'bay-awaiting-merge', 'bay-needs-human', 'bay-rejected']) assert.equal(NODES[id]?.kind, 'bay', id);
+    assert.equal(Object.keys(NODES).length, STAGES.length + 6);
+    for (const [id, node] of Object.entries(NODES)) {
+      assert.equal(node.id, id);
+      assert.ok(node.label.trim() && isFiniteTriple(node.position) && isFiniteTriple(node.size) && isFiniteTriple(node.point), `${id} shape`);
+    }
+    assert.deepEqual(STATIONS.map((s) => s.id), STAGES.map((s) => s.id));
+    for (let i = 1; i < STATIONS.length; i += 1) assert.ok(STATIONS[i].position[0] > STATIONS[i - 1].position[0], 'strictly increasing x');
+  });
+
+  test('AC-2: TRACKS has every listed track and straight segments between node points', () => {
+    assert.ok(Object.isFrozen(TRACKS));
+    const has = (from, to, kind) => TRACKS.some((t) => t.from === from && t.to === to && t.kind === kind);
+    STAGES.slice(1).forEach((st, i) => assert.ok(has(STAGES[i].id, st.id, 'belt'), `belt ${STAGES[i].id}>${st.id}`));
+    for (const [from, to] of [['intake', 'bin-needs-info'], ['intake', 'bin-reject'], ['approve', 'bay-needs-human'], ['merge', 'bay-merged'], ['merge', 'bay-awaiting-merge']]) {
+      assert.ok(has(from, to, 'branch'), `branch ${from}>${to}`);
+    }
+    for (const [from, to] of [['bin-needs-info', 'intake'], ['gate', 'build'], ['review', 'build']]) assert.ok(has(from, to, 'loop'), `loop ${from}>${to}`);
+    for (const [from, to] of [['bay-awaiting-merge', 'bay-merged'], ['bay-needs-human', 'build'], ['bay-needs-human', 'bay-rejected']]) {
+      assert.ok(has(from, to, 'human'), `human ${from}>${to}`);
+    }
+    for (const { from, to, points } of TRACKS) {
+      assert.deepEqual(points[0], NODES[from].point, `${from}>${to} starts at the point`);
+      assert.deepEqual(points.at(-1), NODES[to].point, `${from}>${to} ends at the point`);
+      for (let k = 1; k < points.length; k += 1) {
+        const changed = [0, 1, 2].filter((c) => points[k][c] !== points[k - 1][c]).length;
+        assert.equal(changed, 1, `${from}>${to} segment ${k} changes one coordinate`);
       }
-      points.forEach((p) => insideView(p, `${id} wire point`));
-      assert.ok(isFiniteTriple(labelAnchor), `${id} labelAnchor is a finite triple`);
-      insideView(labelAnchor, `${id} labelAnchor`);
-      const f = footprint(pad);
-      assert.ok(f.x0 >= plate.x0 && f.x1 <= plate.x1, `${id} pad inside PLATE in x`);
-      assert.ok(f.y0 >= plate.y0 && f.y1 <= plate.y1, `${id} pad inside PLATE in y`);
+    }
+  });
+
+  test('AC-2: everything lies on the PLATE and inside FLOOR_VIEWBOX', () => {
+    const plate = footprint(PLATE);
+    for (const [id, node] of Object.entries(NODES)) {
+      for (const c of corners(node.position, node.size)) {
+        assert.ok(onPlate(c, plate), `${id} corner ${c} on the plate`);
+        assert.ok(insideView(c), `${id} corner ${c} inside the view`);
+      }
+      assert.ok(onPlate(node.point, plate) && insideView(node.point), `${id} point`);
+    }
+    for (const { from, to, points } of TRACKS) {
+      for (const p of points) assert.ok(onPlate(p, plate) && insideView(p), `${from}>${to} point ${p}`);
     }
   });
 });

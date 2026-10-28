@@ -41,22 +41,21 @@ function playPerfectGame() {
   return state;
 }
 
-test('AC-2: STAGES follow the loop order and match the agents in .claude/agents/', async () => {
+test('AC-1: STAGES are the v2 pipeline and match the agents in .claude/agents/', async () => {
   assert.deepEqual(
     STAGES.map((s) => s.id),
-    ['feature', 'spec', 'build', 'review', 'wait-for-all', 'approval', 'outcome'],
+    ['queue', 'intake', 'route', 'spec', 'build', 'gate', 'review', 'approve', 'merge'],
   );
   assert.ok(Object.isFrozen(STAGES), 'STAGES is frozen');
 
-  // The game still teaches the v1 loop, so it has no intake stage (job 012).
   const agents = await readAgents();
   assert.equal(agents.length, 8, 'eight agent files');
   const fromEngine = STAGES.flatMap((s) => s.agents).map(key).sort();
-  const fromFiles = agents.filter(({ name }) => name !== 'intake').map(key).sort();
-  assert.deepEqual(fromEngine, fromFiles, 'engine agents equal .claude/agents/ frontmatter, excluding intake');
+  const fromFiles = agents.map(key).sort();
+  assert.deepEqual(fromEngine, fromFiles, 'engine agents equal .claude/agents/ frontmatter, intake included');
 
-  for (const id of ['feature', 'wait-for-all', 'outcome']) {
-    assert.deepEqual(STAGES.find((s) => s.id === id).agents, [], `${id} is orchestrator-only`);
+  for (const id of ['queue', 'route', 'gate', 'merge']) {
+    assert.deepEqual(STAGES.find((s) => s.id === id).agents, [], `${id} has no agents`);
   }
   for (const stage of STAGES) {
     assert.ok(stage.title.trim(), `${stage.id} title`);
@@ -65,7 +64,24 @@ test('AC-2: STAGES follow the loop order and match the agents in .claude/agents/
   }
 });
 
-test('AC-3: every stage has a well-formed question', () => {
+test('AC-1: the routing text names every model config.json can assign', async () => {
+  const config = JSON.parse(await readFile(new URL('../factory/config.json', import.meta.url), 'utf8'));
+  const { builder, reviewers } = config.routing;
+  const models = (rule) => new Set(typeof rule === 'string' ? [rule] : Object.values(rule));
+  const expected = { builder: models(builder) };
+  for (const [lens, rule] of Object.entries(reviewers)) expected[`review-${lens}`] = models(rule.model);
+  const agents = STAGES.flatMap((s) => s.agents);
+  for (const [name, set] of Object.entries(expected)) {
+    const agent = agents.find((a) => a.name === name);
+    assert.ok(agent?.routing, `${name} has a routing text`);
+    for (const model of set) assert.ok(agent.routing.includes(model), `${name} routing names ${model}`);
+  }
+  for (const agent of agents) {
+    if (!(agent.name in expected)) assert.equal(agent.routing, undefined, `${agent.name} has no routing`);
+  }
+});
+
+test('AC-1: every stage has a well-formed question', () => {
   const ids = new Set(STAGES.map((s) => s.id));
   assert.ok(Object.isFrozen(QUESTIONS), 'QUESTIONS is frozen');
   for (const id of ids) {

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { STAGES } from '../src/game/engine.js';
+import { TOUR_STEPS } from '../src/game/scenarios.js';
+
+const ITEMS = [...STAGES, ...TOUR_STEPS];
 import { BOTTOM_PANEL, HUD_HEIGHT, MARGIN, PANEL_GAP, TOP_PANEL, screenLayout } from '../src/game/layout.js';
 
 const css = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
@@ -28,7 +31,7 @@ const wideBlock = block(css, css.indexOf('@media (min-width: 64rem)'));
 const rule = (body, selector) => block(body, body.indexOf(`${selector} {`));
 
 test('AC-1: the floor box is horizontally centered on wide screens', () => {
-  for (const stage of STAGES) {
+  for (const stage of ITEMS) {
     for (const [w, h] of WIDE_SIZES) {
       const { scene } = screenLayout(stage, w, h);
       assert.equal(scene.left, MARGIN);
@@ -38,20 +41,20 @@ test('AC-1: the floor box is horizontally centered on wide screens', () => {
   }
 });
 
-test('AC-2: on wide screens the caption and floor sit below the top panel and fit on screen', () => {
-  for (const stage of STAGES) {
+test('AC-7: on wide screens the caption and floor sit below the top panel and fit on screen', () => {
+  for (const stage of ITEMS) {
     for (const [w, h] of WIDE_SIZES) {
       const { captionTop, scene } = screenLayout(stage, w, h);
       assert.ok(captionTop >= HUD_HEIGHT + PANEL_GAP + TOP_PANEL * h, `${w}x${h} caption below panel`);
       assert.ok(scene.top > captionTop);
-      assert.ok(scene.height >= 1);
+      assert.ok(scene.height >= 0.15 * h, `${w}x${h} floor is at least 15% tall`);
       assert.ok(scene.top + scene.height <= h - MARGIN);
     }
   }
 });
 
 test('AC-3: narrow screens keep the bottom-dock math', () => {
-  for (const stage of STAGES) {
+  for (const stage of ITEMS) {
     for (const [w, h] of NARROW_SIZES) {
       const { captionTop, scene } = screenLayout(stage, w, h);
       assert.equal(captionTop, HUD_HEIGHT + 8);

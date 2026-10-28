@@ -15,26 +15,19 @@ const SIN = Math.sin(Math.PI / 6);
 const STATION_DEPTH = 64;
 const STATION_HEIGHT = 22;
 /** Narrowest station; wide enough for the job package and one agent pod. */
-const MIN_STATION_WIDTH = 64;
+const MIN_STATION_WIDTH = 52;
 /** Belt length between neighboring stations. */
-const BELT_LENGTH = 44;
+const BELT_LENGTH = 24;
 /** Agent pods: size, distance between pod corners, inset from the station corner. */
 const POD_SIZE = Object.freeze([14, 14, 12]);
-const POD_PITCH = 22;
+const POD_PITCH = 18;
 const POD_INSET = 8;
 /** Job package: size and offset from the station corner (front lane of the deck). */
 const PACKAGE_SIZE = 18;
 const PACKAGE_OFFSET = Object.freeze([10, 38, STATION_HEIGHT]);
 /** The belt lane the package rides on (y range). */
 const LANE = Object.freeze([34, 60]);
-/** How far behind the stations (negative y) the rework loop runs. */
-const REWORK_BACK = 84;
-/**
- * Where the rework loop leaves and joins the stations: far enough behind a box
- * (more than its height) that the ends show above its back edge on screen.
- */
-const REWORK_END = STATION_HEIGHT + 8;
-/** Ground plate margin around the stations, and its thickness. */
+/** Ground plate margin around the plant, and its thickness. */
 const PLATE_MARGIN = 24;
 const PLATE_THICKNESS = 6;
 /** Station label font size (viewBox units) and monospace character width. */
@@ -42,20 +35,23 @@ const LABEL_SIZE = 12;
 const CHAR_WIDTH = 0.62 * LABEL_SIZE;
 /** Station labels sit just in front of (down-left of) each station's front-left corner. */
 const LABEL_GAP = 10;
-/** Approval fork: outcome pad size, and its gaps from the outcome station along x and y. */
-const PAD_SIZE = Object.freeze([56, 32, STATION_HEIGHT]);
-const PAD_GAP_X = 28;
-const PAD_GAP_Y = 12;
-/** Where the fork splits: this far in from the outcome deck's right (+x) edge, clear of the package. */
-const FORK_INSET = 18;
-/** How far into its pad a branch wire runs. */
-const BRANCH_REACH = 14;
-/** The APPROVE label floats this high above its pad's back edge; ESCALATE sits this far in front of its pad. */
-const APPROVE_LABEL_LIFT = 34;
-const ESCALATE_LABEL_GAP = 16;
-/** Human route: where it starts and ends, in from each pad's right (+x) edge, and how far past the pads it runs. */
-const HUMAN_INSET = 10;
-const HUMAN_OUT = 24;
+
+/** Bins at the intake sorting gate: size, and the gap between the station row and the bin. */
+const BIN_SIZE = Object.freeze([40, 28, 12]);
+const BIN_GAP = 20;
+/** Output bays: the two kinds of size, and the gap between the station row and a bay. */
+const BAY_SIZE = Object.freeze([56, 32, 16]);
+const END_BAY_SIZE = Object.freeze([56, STATION_DEPTH, 16]);
+const BAY_GAP = 20;
+/** How far past the last station the end bay stands, and how far past the approver the REJECT bay stands. */
+const END_BAY_GAP = 30;
+/** The labels float this high above their bin or bay. */
+const NODE_LABEL_LIFT = 16;
+/** Where a package turns off the deck lane: this far in from the package's own corner. */
+const JOG = 24;
+/** Gate loops run in front of the station row at these y values (gate to build, review to build). */
+const GATE_LOOP_Y = STATION_DEPTH + 12;
+const REVIEW_LOOP_Y = STATION_DEPTH + 28;
 
 const MAX_SIDE = 1920;
 const FALLBACK_SIZE = Object.freeze({ width: 1280, height: 720 });
@@ -102,24 +98,6 @@ export const FLOOR = Object.freeze({
   labelGap: LABEL_GAP,
 });
 
-const stationCenterX = (id) => {
-  const { position, size } = STATIONS.find((s) => s.id === id);
-  return position[0] + size[0] / 2;
-};
-
-/**
- * The rework loop on the floor, behind the stations: from behind
- * "wait-for-all", back along the floor, to just behind "build".
- */
-export const REWORK_POINTS = Object.freeze(
-  [
-    [stationCenterX('wait-for-all'), -REWORK_END, 0],
-    [stationCenterX('wait-for-all'), -REWORK_BACK, 0],
-    [stationCenterX('build'), -REWORK_BACK, 0],
-    [stationCenterX('build'), -REWORK_END, 0],
-  ].map((p) => Object.freeze(p)),
-);
-
 const deepFreeze = (value) => {
   if (value !== null && typeof value === 'object') {
     Object.values(value).forEach(deepFreeze);
@@ -128,82 +106,110 @@ const deepFreeze = (value) => {
   return value;
 };
 
-/**
- * The approver's two outcomes, drawn after the last station ("outcome"): the
- * line splits on its deck into an APPROVE branch to a pad behind the station row
- * (merge to main) and an ESCALATE branch to a pad in front of it (needs-human).
- * Each branch wire runs at deck height, so every segment is a straight iso
- * hairline, and ends over its pad's top face. A pad is an iso box like a station.
- */
-export const FORK = (() => {
-  const outcome = STATIONS.find((s) => s.id === 'outcome');
-  const [ox, oy] = outcome.position;
-  const [ow, od, oh] = outcome.size;
-  const [w, d, h] = PAD_SIZE;
-  const point = [ox + ow - FORK_INSET, oy + od / 2, oh];
-  const padX = ox + ow + PAD_GAP_X;
-  const branch = (id, decision, label, padY, labelAnchor) => {
-    const laneY = padY + d / 2;
-    return {
-      id,
-      decision,
-      label,
-      pad: { position: [padX, padY, 0], size: [...PAD_SIZE] },
-      points: [[...point], [point[0], laneY, oh], [padX + BRANCH_REACH, laneY, oh]],
-      labelAnchor,
-    };
-  };
-  const approveY = oy - PAD_GAP_Y - d;
-  const escalateY = oy + od + PAD_GAP_Y;
-  return deepFreeze({
-    point,
-    branches: [
-      branch('approve', 'APPROVE', 'APPROVE: merge a main', approveY, [padX + w, approveY, h + APPROVE_LABEL_LIFT]),
-      branch('escalate', 'ESCALATE', 'ESCALATE: needs-human', escalateY, [
-        padX + w + ESCALATE_LABEL_GAP,
-        escalateY + d + ESCALATE_LABEL_GAP,
-        0,
-      ]),
-    ],
-  });
-})();
+const station = (id) => STATIONS.find((st) => st.id === id);
+const sum = (a, b) => a.map((v, k) => v + b[k]);
+/** The package's resting min corner on a station deck. */
+const deckPoint = ({ position }) => sum(position, PACKAGE_OFFSET);
+/** A package centred on a node of size [w, d], standing on its top face of height h. */
+const topPoint = (position, [w, d, h]) => [position[0] + (w - PACKAGE_SIZE) / 2, position[1] + (d - PACKAGE_SIZE) / 2, h];
+
+const stationNode = (st, i) => ({
+  id: st.id,
+  kind: 'station',
+  label: STAGES[i].title,
+  position: st.position,
+  size: st.size,
+  point: deckPoint(st),
+});
+const lowNode = (id, kind, label, position, size, point = topPoint(position, size)) => ({ id, kind, label, position, size, point });
+
+// Intake's sorting gate has three exits: ACCEPT rides the belt on; NEEDS-INFO goes to
+// a bin in front of the row and REJECT to a bin behind it.
+const intake = station('intake');
+const [ix] = intake.position;
+// The approver's fork: ESCALATE goes to a bay behind the row, and the REJECT-ed
+// jobs of a closed PR end in a bay next to it.
+const approve = station('approve');
+const [ax] = approve.position;
+const last = STATIONS[STATIONS.length - 1];
+const [mx] = last.position;
 
 /**
- * The way a human-approved package travels from the ESCALATE pad to main: it
- * starts over the ESCALATE pad, runs around the +x side of both pads, and ends
- * over the APPROVE pad, at pad-top height. Every segment changes one coordinate,
- * so each one draws as a straight iso hairline. Points are where a package's
- * centre passes, like the branch wires.
+ * Everything a package can stand on: one node per station, the two bins at
+ * intake's sorting gate and the four output bays. `point` is the package's resting
+ * min corner there (the corner with the smallest x, y and z).
  */
-export const HUMAN_ROUTE = (() => {
-  const [approve, escalate] = FORK.branches.map((b) => b.pad);
-  const laneY = (pad) => pad.position[1] + pad.size[1] / 2;
-  const innerX = escalate.position[0] + escalate.size[0] - HUMAN_INSET;
-  const outerX = Math.max(approve.position[0] + approve.size[0], escalate.position[0] + escalate.size[0]) + HUMAN_OUT;
-  const z = escalate.size[2];
+export const NODES = deepFreeze(
+  Object.fromEntries(
+    [
+      ...STATIONS.map(stationNode),
+      lowNode('bin-needs-info', 'bin', 'NEEDS-INFO', [ix + 24, STATION_DEPTH + BIN_GAP, 0], BIN_SIZE),
+      lowNode('bin-reject', 'bin', 'REJECT', [ix + 24, -BIN_GAP - BIN_SIZE[1], 0], BIN_SIZE),
+      lowNode('bay-merged', 'bay', 'merged', [mx + last.size[0] + END_BAY_GAP, 0, 0], END_BAY_SIZE, [
+        mx + last.size[0] + END_BAY_GAP + (END_BAY_SIZE[0] - PACKAGE_SIZE) / 2,
+        PACKAGE_OFFSET[1],
+        END_BAY_SIZE[2],
+      ]),
+      lowNode('bay-awaiting-merge', 'bay', 'awaiting-merge', [mx + 15, STATION_DEPTH + BAY_GAP, 0], BAY_SIZE),
+      lowNode('bay-needs-human', 'bay', 'needs-human', [ax + 15, -BAY_GAP - BAY_SIZE[1], 0], BAY_SIZE),
+      lowNode('bay-rejected', 'bay', 'rejected', [ax + 15 + BAY_SIZE[0] + 24, -BAY_GAP - BAY_SIZE[1], 0], BAY_SIZE),
+    ].map((node) => [node.id, node]),
+  ),
+);
+
+const pt = (id) => NODES[id].point;
+const at3 = ([x, y, z], { x: nx = x, y: ny = y, z: nz = z }) => [nx, ny, nz];
+const copy = (p) => [...p];
+
+// Builds a polyline between two nodes: the start, the corners the route turns at
+// and the end. Each corner changes one coordinate of the one before it.
+const track = (from, to, kind, ...corners) => ({ from, to, kind, points: [copy(pt(from)), ...corners, copy(pt(to))] });
+const belt = (from, to) => track(from, to, 'belt');
+
+/**
+ * Where packages travel. Belts join the stations in order. Branches leave the
+ * line at the sorting gate, the approver's fork and the merge. Loops send a job
+ * back (NEEDS-INFO to intake, a failed gate or CHANGES to build). Human tracks are
+ * what a person does: merge, rework or close a PR. Every segment changes exactly
+ * one coordinate, so each one draws as a straight iso hairline. Points are where a
+ * package's min corner passes.
+ */
+export const TRACKS = (() => {
+  const z = STATION_HEIGHT;
+  const ip = pt('intake');
+  const bin = pt('bin-needs-info');
+  const reject = pt('bin-reject');
+  const ap = pt('approve');
+  const human = pt('bay-needs-human');
+  const mp = pt('merge');
+  const merged = pt('bay-merged');
+  const awaiting = pt('bay-awaiting-merge');
+  const build = pt('build');
+  const behindY = human[1];
   return deepFreeze([
-    [innerX, laneY(escalate), z],
-    [outerX, laneY(escalate), z],
-    [outerX, laneY(approve), z],
-    [approve.position[0] + approve.size[0] - HUMAN_INSET, laneY(approve), z],
+    ...STATIONS.slice(1).map((st, i) => belt(STATIONS[i].id, st.id)),
+    track('intake', 'bin-needs-info', 'branch', [ip[0], bin[1], z], [bin[0], bin[1], z]),
+    track('intake', 'bin-reject', 'branch', [reject[0], ip[1], z], [reject[0], reject[1], z]),
+    track('approve', 'bay-needs-human', 'branch', [human[0], ap[1], z], [human[0], behindY, z]),
+    track('merge', 'bay-merged', 'branch', [merged[0], mp[1], z]),
+    track('merge', 'bay-awaiting-merge', 'branch', [mp[0], awaiting[1], z], [awaiting[0], awaiting[1], z]),
+    track('bin-needs-info', 'intake', 'loop', [bin[0], bin[1], z], [bin[0], ip[1], z]),
+    track('gate', 'build', 'loop', at3(pt('gate'), { y: GATE_LOOP_Y }), at3(build, { y: GATE_LOOP_Y })),
+    track('review', 'build', 'loop', at3(pt('review'), { y: REVIEW_LOOP_Y }), at3(build, { y: REVIEW_LOOP_Y })),
+    track('bay-awaiting-merge', 'bay-merged', 'human', [merged[0], awaiting[1], awaiting[2]]),
+    track('bay-needs-human', 'build', 'human', [human[0], human[1], z], [build[0] + JOG, human[1], z], [build[0] + JOG, build[1], z]),
+    track('bay-needs-human', 'bay-rejected', 'human'),
   ]);
 })();
 
-const padFootprints = FORK.branches.map(({ pad: { position, size } }) => [
-  position[0],
-  position[1],
-  position[0] + size[0],
-  position[1] + size[1],
-]);
-// A package riding the human route reaches half its size past the route's points.
-const routeReach = PACKAGE_SIZE / 2;
-const last = STATIONS[STATIONS.length - 1];
-const plateX1 =
-  Math.max(last.position[0] + last.size[0], ...padFootprints.map((f) => f[2]), ...HUMAN_ROUTE.map((p) => p[0] + routeReach)) +
-  PLATE_MARGIN;
-const plateY0 = Math.min(-REWORK_BACK, ...padFootprints.map((f) => f[1])) - PLATE_MARGIN;
-const plateY1 = Math.max(STATION_DEPTH, ...padFootprints.map((f) => f[3])) + PLATE_MARGIN;
-/** The ground plate under the whole floor (stations, rework loop, fork pads, human route): [x, y, z] corner and [w, d, h] size. */
+/** The plant's ground plate and the "ACCEPT" label, in iso-figure units. */
+const nodeBoxes = Object.values(NODES).map(({ position, size }) => ({ position, size }));
+const trackPoints = TRACKS.flatMap((t) => t.points);
+const reach = PACKAGE_SIZE;
+const plateX1 = Math.max(...nodeBoxes.map(({ position, size }) => position[0] + size[0]), ...trackPoints.map((p) => p[0] + reach)) + PLATE_MARGIN;
+const plateY0 = Math.min(...nodeBoxes.map(({ position }) => position[1]), ...trackPoints.map((p) => p[1])) - PLATE_MARGIN;
+const plateY1 = Math.max(...nodeBoxes.map(({ position, size }) => position[1] + size[1]), ...trackPoints.map((p) => p[1] + reach)) + PLATE_MARGIN;
+/** The ground plate under the whole plant (stations, bins, bays and tracks): [x, y, z] corner and [w, d, h] size. */
 export const PLATE = Object.freeze({
   position: Object.freeze([-PLATE_MARGIN, plateY0, -PLATE_THICKNESS]),
   size: Object.freeze([plateX1 + PLATE_MARGIN, plateY1 - plateY0, PLATE_THICKNESS]),
@@ -219,6 +225,24 @@ export function labelAnchor(i) {
   const [x, y] = STATIONS[i].position;
   return [x - LABEL_GAP, y + STATION_DEPTH + LABEL_GAP, 0];
 }
+
+/**
+ * Where a bin's or a bay's label floats: centred over its top face. The label is
+ * drawn flat on screen, centred on this point.
+ * @param {string} id a bin or bay id from NODES
+ * @returns {number[]}
+ */
+export function nodeLabelAnchor(id) {
+  const { position, size } = NODES[id];
+  return [position[0] + size[0] / 2, position[1] + size[1] / 2, size[2] + NODE_LABEL_LIFT];
+}
+
+const ACCEPT_AT = (() => {
+  const next = STATIONS[STATIONS.findIndex((st) => st.id === 'intake') + 1];
+  return [(intake.position[0] + intake.size[0] + next.position[0]) / 2, LANE[0], STATION_HEIGHT + NODE_LABEL_LIFT];
+})();
+/** The ACCEPT exit of intake's sorting gate: its label floats over the belt that leaves the gate. */
+export const ACCEPT_LABEL = Object.freeze({ text: 'ACCEPT', anchor: Object.freeze(ACCEPT_AT) });
 
 const boxCorners = (position, size) =>
   [0, 1, 2, 3, 4, 5, 6, 7].map((c) => position.map((v, k) => v + ((c >> k) & 1) * size[k]));
@@ -256,9 +280,9 @@ function labelPoints(i) {
   return [anchor, [anchor[0] - a, anchor[1] + a, 0], [anchor[0], anchor[1], LABEL_SIZE]];
 }
 
-// A fork label is drawn flat on screen and centred on its anchor (textAnchor middle).
-function forkLabelPoints({ label, labelAnchor: [x, y, z] }) {
-  const a = (label.length * CHAR_WIDTH) / 2 / (2 * COS);
+// A label drawn flat on screen and centred on its anchor (textAnchor middle).
+function centredLabelPoints(text, [x, y, z]) {
+  const a = (text.length * CHAR_WIDTH) / 2 / (2 * COS);
   return [
     [x - a, y + a, z],
     [x + a, y - a, z],
@@ -267,23 +291,23 @@ function forkLabelPoints({ label, labelAnchor: [x, y, z] }) {
 }
 
 /**
- * The viewBox that frames the whole floor: every station box up to the tallest
- * deck part, the rework loop, the ground plate, the station labels, the
- * approval fork (pads, branch wires, and labels), and the human route.
+ * The viewBox that frames the whole plant: every station box up to the tallest
+ * deck part, the bins and bays, the ground plate, every label, and a package at
+ * every track point.
  */
 export const FLOOR_VIEWBOX = Object.freeze(
   isoFrame([
     ...STATIONS.flatMap(({ position, size }) => boxCorners(position, [size[0], size[1], TALLEST])),
-    ...REWORK_POINTS,
+    ...nodeBoxes.flatMap(({ position, size }) => boxCorners(position, size)),
     ...boxCorners(PLATE.position, PLATE.size),
     ...STATIONS.flatMap((_, i) => labelPoints(i)),
-    ...FORK.branches.flatMap((b) => [
-      ...boxCorners(b.pad.position, b.pad.size),
-      ...b.points,
-      b.labelAnchor,
-      ...forkLabelPoints(b),
-    ]),
-    ...HUMAN_ROUTE,
+    ...Object.values(NODES)
+      .filter(({ kind }) => kind !== 'station')
+      .flatMap(({ id, label }) => centredLabelPoints(label, nodeLabelAnchor(id))),
+    ...centredLabelPoints(ACCEPT_LABEL.text, ACCEPT_LABEL.anchor),
+    ...[...trackPoints, ...Object.values(NODES).map(({ point }) => point)].flatMap((p) =>
+      boxCorners(p, [PACKAGE_SIZE, PACKAGE_SIZE, PACKAGE_SIZE]),
+    ),
   ]),
 );
 

@@ -34,8 +34,9 @@ merge changes the stack or the test command.
 - iso-glow style comes from the `/iso-glow` skill (`~/.claude/skills/iso-glow/`).
   The `iso` kernel is adapted from iso-figure (MIT), credited in `scene.js`; `game.html`
   carries a "Made with ISO-GLOW" credit link. Human-approved in job 007.
-  `engine.js` must match `.claude/agents/` names and models, all but `intake` (the
-  game doesn't show it yet); a test checks it.
+  `engine.js` must match `.claude/agents/` names and models, intake included; a test
+  checks it. `scenarios.js` holds the guided loop's ten narrated scenarios; tests check
+  them against `factory/lib/route.js` and `factory/config.json`.
 - `factory/avatars.js`: the octopus agent characters, shared by the dashboard and the
   game bundle. Rebuild `public/game.js` whenever it changes.
 - `FactoryLoop.jsx` copies layout numbers from `styles.css` (breakpoint, panel width,
