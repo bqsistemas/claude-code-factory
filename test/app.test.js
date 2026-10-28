@@ -334,3 +334,39 @@ describe('job 005: fullscreen 3D factory scene with the octopus agent crew', () 
     }
   });
 });
+
+describe('job 006: camera framing and flow labels', () => {
+  const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
+
+  test('AC-5: FactoryLoop uses the scene projection helpers and renders hidden flow labels', async () => {
+    const loop = await read('../src/game/FactoryLoop.jsx');
+    const sceneImport = loop.match(/import\s*\{([^}]*)\}\s*from\s*'\.\/scene\.js'/)?.[1] ?? '';
+    for (const name of ['cameraFov', 'projectPoint', 'toScreen']) {
+      assert.match(sceneImport, new RegExp(`\\b${name}\\b`), `FactoryLoop imports ${name} from ./scene.js`);
+    }
+    for (const text of ['aria-hidden', 'stage.title', 'Retrabajo: cambios pedidos']) {
+      assert.ok(loop.includes(text), `FactoryLoop contains ${text}`);
+    }
+    assert.ok(!loop.includes('Math.PI / 8'), 'the fov formula moved out of FactoryLoop');
+  });
+
+  test('AC-6: the committed game bundle contains the rework label', async () => {
+    const bundle = await read('../public/game.js');
+    assert.ok(bundle.includes('Retrabajo: cambios pedidos'), 'bundle contains the rework label');
+  });
+
+  test('AC-7: the quest log gains the labeled flow item and keeps the earlier ones', async () => {
+    const body = await (await fetch(`${baseUrl}/`)).text();
+    const questLog = body.match(/<section id="quest-log"[\s\S]*?<\/section>/)[0];
+    const items = questLog.match(/<li class="quest[\s\S]*?<\/li>/g);
+    for (const text of [
+      'Follow the labeled factory flow',
+      'Build the landing page',
+      'Play the factory learning game',
+      'Meet the octopus agent crew',
+      'Tour the 3D factory floor',
+    ]) {
+      assert.ok(items.some((li) => li.includes(text)), `quest item: ${text}`);
+    }
+  });
+});

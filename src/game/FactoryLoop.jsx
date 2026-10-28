@@ -1,8 +1,9 @@
 // Remotion composition: a real-time 3D factory floor. Each stage is a station on
 // a conveyor, the job package rides the belt to the current stage, and every
 // agent stands at its station as a 3D octopus. An HTML caption in the top-left
-// corner keeps the stage, agents, models, and output file readable as text.
-// Caption styles are React style objects (applied through the CSSOM, allowed by
+// corner keeps the stage, agents, models, and output file readable as text, and
+// HTML labels over the canvas name each station and the rework loop.
+// Caption and label styles are React style objects (applied through the CSSOM, allowed by
 // the CSP) and reuse the page's :root custom properties, with fallbacks.
 import { Component, useLayoutEffect } from 'react';
 import { useThree } from '@react-three/fiber';
@@ -13,7 +14,7 @@ import { CatmullRomCurve3, Vector3 } from 'three';
 import { STAGES } from './engine.js';
 import { Octopus } from './Octopus.jsx';
 import { Octopus3D } from './Octopus3D.jsx';
-import { STATIONS, cameraFor, packagePosition } from './scene.js';
+import { STATIONS, cameraFor, cameraFov, packagePosition, projectPoint, toScreen } from './scene.js';
 
 const color = {
   bg: 'var(--color-bg, #0b0d17)',
@@ -76,6 +77,11 @@ function screenLayout(stage, width, height) {
 }
 
 const PLATFORM_DEPTH = 2.2;
+// Station labels float above the octopus heads (an active octopus is about 2.2 tall).
+const LABEL_Y = 3.1;
+// How far behind the stations the rework belt runs, so its label sits above the
+// station labels on screen instead of on top of them.
+const REWORK_BACK = 5.2;
 const AGENT_GAP = 1.1;
 const platformWidth = (stage) => Math.max(2.2, stage.agents.length * AGENT_GAP + 0.4);
 
@@ -118,24 +124,33 @@ class SceneBoundary extends Component {
 
 const lerp3 = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
 
-// Moves the camera between stations and shifts the view so the station lands
-// in the part of the screen the docked quiz panel leaves free.
-function CameraRig({ stageIndex, progress, width, height, centerX, centerY }) {
+// The camera for the current frame: on its way from the previous station's
+// view (progress 0) to the current one (progress 1).
+function cameraView(stageIndex, progress) {
+  const from = cameraFor(stageIndex - 1);
+  const to = cameraFor(stageIndex);
+  return {
+    position: lerp3(from.position, to.position, progress),
+    target: lerp3(from.target, to.target, progress),
+  };
+}
+
+// Places the three.js camera at the given view and shifts it so the station
+// lands in the part of the screen the docked quiz panel leaves free. The labels
+// project with the same view and fov, so they stay on their stations.
+function CameraRig({ view, fov, width, height, centerX, centerY }) {
   const camera = useThree((s) => s.camera);
   const invalidate = useThree((s) => s.invalidate);
+  const [px, py, pz] = view.position;
+  const [tx, ty, tz] = view.target;
   useLayoutEffect(() => {
-    const from = cameraFor(stageIndex - 1);
-    const to = cameraFor(stageIndex);
-    camera.position.set(...lerp3(from.position, to.position, progress));
-    camera.lookAt(...lerp3(from.target, to.target, progress));
-
-    const aspect = width / height;
-    // Portrait screens get a wider vertical angle so the station still fits across.
-    camera.fov = aspect < 1 ? Math.min(70, (2 * Math.atan(Math.tan(Math.PI / 8) / aspect) * 180) / Math.PI) : 45;
+    camera.position.set(px, py, pz);
+    camera.lookAt(tx, ty, tz);
+    camera.fov = fov;
     camera.setViewOffset(width, height, width / 2 - centerX, height / 2 - centerY, width, height);
     camera.updateProjectionMatrix();
     invalidate();
-  }, [camera, invalidate, stageIndex, progress, width, height, centerX, centerY]);
+  }, [camera, invalidate, px, py, pz, tx, ty, tz, fov, width, height, centerX, centerY]);
   return null;
 }
 
@@ -173,20 +188,26 @@ function Belt({ from, to }) {
   );
 }
 
+// Control points of the rework belt, from "wait-for-all" back to "build"; the
+// middle one is where the belt is farthest back, and where its label goes.
+function reworkPoints() {
+  const from = STATIONS.find((s) => s.id === 'wait-for-all').position;
+  const to = STATIONS.find((s) => s.id === 'build').position;
+  const back = Math.min(from[2], to[2], 0) - REWORK_BACK;
+  const edge = PLATFORM_DEPTH / 2 + 0.1;
+  return [
+    [from[0], 0.08, from[2] - edge],
+    [from[0] - 0.3, 0.08, back],
+    [(from[0] + to[0]) / 2, 0.08, back - 0.3],
+    [to[0] + 0.3, 0.08, back],
+    [to[0], 0.08, to[2] - edge - 0.5],
+  ];
+}
+
 // Dashed magenta return belt behind the stations, from "wait-for-all" back to
 // "build": the rework loop when a reviewer asks for changes.
 function ReworkBelt() {
-  const from = STATIONS.find((s) => s.id === 'wait-for-all').position;
-  const to = STATIONS.find((s) => s.id === 'build').position;
-  const back = Math.min(from[2], to[2], 0) - 3.2;
-  const edge = PLATFORM_DEPTH / 2 + 0.1;
-  const curve = new CatmullRomCurve3([
-    new Vector3(from[0], 0.08, from[2] - edge),
-    new Vector3(from[0] - 0.3, 0.08, back),
-    new Vector3((from[0] + to[0]) / 2, 0.08, back - 0.3),
-    new Vector3(to[0] + 0.3, 0.08, back),
-    new Vector3(to[0], 0.08, to[2] - edge - 0.5),
-  ]);
+  const curve = new CatmullRomCurve3(reworkPoints().map((p) => new Vector3(...p)));
   const dashes = 18;
   const tip = curve.getPointAt(1);
   return (
@@ -225,8 +246,7 @@ function JobPackage({ position, hop }) {
   );
 }
 
-function FactoryFloor({ stageIndex, frame, width, height, layout }) {
-  const cameraProgress = interpolate(frame, CAMERA_FRAMES, [0, 1], { ...clamp, easing: ease });
+function FactoryFloor({ stageIndex, frame, width, height, layout, view, fov }) {
   const packageProgress = interpolate(frame, PACKAGE_FRAMES, [0, 1], { ...clamp, easing: ease });
   // The package hops while it moves and settles when it arrives.
   const hop = packageProgress > 0 && packageProgress < 1 ? Math.abs(Math.sin(packageProgress * Math.PI * 3)) : 0;
@@ -235,13 +255,13 @@ function FactoryFloor({ stageIndex, frame, width, height, layout }) {
   return (
     <>
       <color attach="background" args={[hex.bg]} />
-      <fog attach="fog" args={[hex.bg, 18, 42]} />
+      <fog attach="fog" args={[hex.bg, 22, 50]} />
       <ambientLight intensity={0.55} />
       <hemisphereLight args={['#b8c6ff', hex.floor, 0.6]} />
       <directionalLight position={[6, 12, 8]} intensity={1.6} />
       <CameraRig
-        stageIndex={stageIndex}
-        progress={cameraProgress}
+        view={view}
+        fov={fov}
         width={width}
         height={height}
         centerX={layout.centerX}
@@ -279,6 +299,58 @@ function FactoryFloor({ stageIndex, frame, width, height, layout }) {
 
       <JobPackage position={packagePosition(stageIndex, packageProgress)} hop={hop} />
     </>
+  );
+}
+
+// --- Flow labels ---------------------------------------------------------------
+
+// HTML labels over the canvas: one per station and one on the rework belt, each
+// centered on its 3D anchor projected with the same camera as the scene. They
+// repeat what the caption and the quiz panel already say, so screen readers skip them.
+function FlowLabels({ stageIndex, view, fov, width, height, layout }) {
+  const { unit, centerX, centerY } = layout;
+  const place = (point) => {
+    const ndc = projectPoint(view, point, fov, width / height);
+    if (!(ndc.depth > 0)) return null;
+    const { x, y } = toScreen(ndc, width, height, centerX, centerY);
+    return x >= 0 && x <= width && y >= 0 && y <= height ? { x, y } : null;
+  };
+  const label = (key, point, text, tone, strong) => {
+    const at = place(point);
+    if (!at) return null;
+    return (
+      <div
+        key={key}
+        style={{
+          position: 'absolute',
+          left: at.x,
+          top: at.y,
+          transform: 'translate(-50%, -50%)',
+          padding: `${3 * unit}px ${8 * unit}px`,
+          background: color.panel,
+          border: `2px solid ${tone}`,
+          borderRadius: 4,
+          color: tone,
+          fontFamily: font,
+          fontSize: 13 * unit,
+          fontWeight: strong ? 700 : 400,
+          lineHeight: 1.2,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {text}
+      </div>
+    );
+  };
+  return (
+    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {STAGES.map((stage, i) => {
+        const [x, y, z] = STATIONS[i].position;
+        const current = i === stageIndex;
+        return label(stage.id, [x, y + LABEL_Y, z], `${i + 1} · ${stage.title}`, current ? color.cyan : color.muted, current);
+      })}
+      {label('rework', reworkPoints()[2], 'Retrabajo: cambios pedidos', color.magenta, false)}
+    </div>
   );
 }
 
@@ -346,9 +418,13 @@ export function FactoryLoop({ stageIndex }) {
   const { width, height } = useVideoConfig();
   const active = Math.min(Math.max(Number.isFinite(stageIndex) ? stageIndex : 0, 0), STAGES.length - 1);
   const layout = screenLayout(STAGES[active], width, height);
+  // One camera and fov per frame, shared by the 3D scene and the labels.
+  const view = cameraView(active, interpolate(frame, CAMERA_FRAMES, [0, 1], { ...clamp, easing: ease }));
+  const fov = cameraFov(width / height);
+  const webgl = hasWebGL();
   return (
     <AbsoluteFill style={{ background: color.bg, color: color.text, fontFamily: font }}>
-      {hasWebGL() && (
+      {webgl && (
         <SceneBoundary>
           <ThreeCanvas
             width={width}
@@ -358,10 +434,19 @@ export function FactoryLoop({ stageIndex }) {
             camera={{ fov: 45, near: 0.1, far: 120 }}
             style={{ pointerEvents: 'none' }}
           >
-            <FactoryFloor stageIndex={active} frame={frame} width={width} height={height} layout={layout} />
+            <FactoryFloor
+              stageIndex={active}
+              frame={frame}
+              width={width}
+              height={height}
+              layout={layout}
+              view={view}
+              fov={fov}
+            />
           </ThreeCanvas>
         </SceneBoundary>
       )}
+      {webgl && <FlowLabels stageIndex={active} view={view} fov={fov} width={width} height={height} layout={layout} />}
       <Caption stage={STAGES[active]} index={active} frame={frame} layout={layout} />
     </AbsoluteFill>
   );
