@@ -196,8 +196,8 @@
     "emptyBoard": "No jobs yet. Label a GitHub issue <code>factory<\/code> and run <code>/factory run<\/code> in Claude Code.",
     "demoLink": "Or open the <a href=\"?demo\">demo board<\/a>.",
     "notWritten": "Not written yet.",
-    "parkedHuman": "Needs a human: {n}",
-    "parkedInfo": "Waiting for info: {n}"
+    "parkedHuman": "{n} need{s} a human",
+    "parkedInfo": "{n} waiting for info"
   },
   "es": {
     "columns": {
@@ -338,7 +338,7 @@ function render() {
   const parked = $('parked');
   parked.hidden = !(human + info);
   parked.href = human ? '#col-needs-human' : '#col-needs-info';
-  parked.textContent = [human && T.parkedHuman.replace('{n}', human), info && T.parkedInfo.replace('{n}', info)]
+  parked.textContent = [human && T.parkedHuman.replace('{n}', human).replace('{s}', human === 1 ? 's' : ''), info && T.parkedInfo.replace('{n}', info)]
     .filter(Boolean).join(' · ');
 }
 
