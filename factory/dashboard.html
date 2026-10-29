@@ -796,7 +796,7 @@ function drawOffice(now = 0, moving = false) {
   ctx.globalAlpha = 1;
   drawText(ctx, 'GATE', (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S - 2, '#ffffff', 'center');
   if (office.gate.result) drawText(ctx, office.gate.result, (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S + 11,
-    office.gate.result === 'PASS' ? '#bbf7d0' : '#fecaca', 'center');
+    '#ffffff', 'center');
   // Meeting table and Escalation sign text sit on `--panel` chips, so they read with or without the atlas.
   const labelChip = (text, cx, cy, tone) => {
     const tw = ctx.measureText(text).width + 10;
@@ -824,8 +824,12 @@ function drawOffice(now = 0, moving = false) {
     ctx.lineWidth = 1;
     drawText(ctx, text, cx, y + 11, ink, 'center');
   };
-  chip(`✓${office.archive.merged}`, (shelf.x + shr.w / 2) * S, (shelf.y + shr.h) * S + 2, 'done');
-  chip(`✗${office.archive.rejected}`, (bin.x + br.w / 2) * S, (bin.y + br.h) * S + 2, 'muted');
+  const archiveChips = [];
+  for (const [text, f, r, tone] of [[`✓${office.archive.merged}`, shelf, shr, 'done'], [`✗${office.archive.rejected}`, bin, br, 'muted']]) {
+    const cx = (f.x + r.w / 2) * S, y = (f.y + r.h) * S + 2, tw = ctx.measureText(text).width + 10;
+    chip(text, cx, y, tone);
+    archiveChips.push({ x: cx - tw / 2, y, w: tw, h: 15 });
+  }
   // Job folders per area.
   for (const area of AREAS) {
     const list = area.id === 'escalation' ? [] : office.tokens[area.id] || [];
@@ -874,7 +878,7 @@ function drawOffice(now = 0, moving = false) {
   // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
   // character; with no free slot the tag is omitted (the accessible list still names every agent).
   const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
-  const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'),
+  const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'), spr('shelf'), spr('bin'), ...archiveChips,
     ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
     // Faces only: a tag may cover someone's body but never their head.
     ...[...nextBoxes].filter(([k]) => k.startsWith('agent:')).map(([, box]) => ({ x: box.x, y: box.y, w: box.w, h: Math.round(box.h * 0.4) })),
