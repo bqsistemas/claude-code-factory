@@ -4,13 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Factory Board</title>
+<script id="theme-init">
+(function () {
+  var KEY = 'factory-theme';
+  var root = document.documentElement;
+  function stored() {
+    try { var v = window.localStorage.getItem(KEY); return v === 'light' || v === 'navy' ? v : null; }
+    catch (e) { return null; }
+  }
+  function os() {
+    try { return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'navy'; }
+    catch (e) { return 'navy'; }
+  }
+  function apply(t) { root.setAttribute('data-theme', t); }
+  window.factoryTheme = {
+    current: function () { return root.getAttribute('data-theme') === 'light' ? 'light' : 'navy'; },
+    set: function (t) {
+      if (t !== 'light' && t !== 'navy') return;
+      apply(t);
+      try { window.localStorage.setItem(KEY, t); } catch (e) { /* storage unavailable: keep the choice for this visit */ }
+    },
+  };
+  apply(stored() || os());
+})();
+</script>
 <style>
-  :root {
+  /* Two themes share every shape. Navy is the default; the head script sets
+     data-theme="light" or "navy" before the board renders. */
+  :root, :root[data-theme="navy"] {
     color-scheme: dark;
     --bg: #0d1424; --panel: #17213a; --col: #101a30; --ink: #f4f7fc; --muted: #94a3b8; --line: #263250;
     --pass: #4ade80; --pass-bg: #12372a; --changes: #fbbf24; --changes-bg: #3b2d0e;
     --pending: #a5b4fc; --alert: #fb923c; --alert-bg: #3a1f1c; --chip-bg: #1f2b48;
+    --focus: #dbe6ff; --count-base: #0b1220; --scrim: rgba(2,6,14,.6); --shadow: rgba(0,0,0,.5);
+    --active: #1e6bff; --done: #22c55e; --on-accent: #fff;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f5fa; --panel: #ffffff; --col: #eef2fa; --ink: #0f172a; --muted: #475569; --line: #cfd7e8;
+    --pass: #166534; --pass-bg: #dcfce7; --changes: #92400e; --changes-bg: #fef3c7;
+    --pending: #4338ca; --alert: #b91c1c; --alert-bg: #fee2e2; --chip-bg: #e6ebf7;
+    --focus: #1e3a8a; --count-base: #ffffff; --scrim: rgba(15,23,42,.35); --shadow: rgba(15,23,42,.2);
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
@@ -20,6 +55,11 @@
   .top h1 { font-size: 20px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   .tag { font: 600 10px var(--mono); letter-spacing: .08em; padding: 2px 8px; border-radius: 999px;
          background: var(--changes-bg); color: var(--changes); }
+  .theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+                  border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+                  font-size: 15px; cursor: pointer; align-self: center; }
+  .theme-toggle:hover { border-color: var(--muted); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .status { color: var(--muted); font-size: 12px; margin-left: auto; }
   .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
                     background: var(--pass); margin-right: 6px; vertical-align: 1px; }
@@ -28,35 +68,36 @@
   /* 12 columns: the board scrolls sideways on wide screens and stacks on phones.
      Empty columns shrink so the busy ones (and Needs human) stay in view. */
   .board { display: flex; align-items: flex-start; gap: 14px; padding: 14px 24px 32px; overflow-x: auto; }
-  .col { --accent: #a5b4fc; flex: 1 0 232px; min-width: 0; padding: 14px 12px 12px; border-radius: 16px;
+  .col { --accent: var(--pending); flex: 1 0 232px; min-width: 0; padding: 14px 12px 12px; border-radius: 16px;
          border: 1px solid var(--line);
          background: var(--col);
          background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 14%, var(--col)), var(--col) 70%);
          border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
-  .col.tone-pending { --accent: #a5b4fc; }
+  .col.tone-pending { --accent: var(--pending); }
   .col.tone-active { --accent: #1e6bff; }
   .col.tone-review { --accent: #8b5cf6; }
   .col.tone-done { --accent: #22c55e; }
   .col.tone-parked { --accent: #f87171; }
   .col.tone-muted { --accent: #64748b; }
-  .col.quiet { flex: 0 0 128px; }
+  .col.quiet { flex: 0 0 160px; }
   @media (max-width: 640px)  { .board { flex-direction: column; align-items: stretch; overflow-x: visible; padding: 12px 16px 24px; }
                                .col, .col.quiet { flex: none; }
                                .top { padding: 18px 16px 4px; } }
   .parked { font-size: 12px; font-weight: 600; color: var(--alert); background: var(--alert-bg);
             padding: 2px 10px; border-radius: 999px; text-decoration: none; }
   .parked:hover, .parked:focus-visible { text-decoration: underline; }
-  a:focus-visible, .file:focus-visible, .close:focus-visible, .doc:focus-visible { outline: 2px solid #dbe6ff; outline-offset: 2px; }
+  a:focus-visible, .file:focus-visible, .close:focus-visible, .doc:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .col h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 16px; font-weight: 700; color: var(--ink); }
-  .lane-title { min-width: 0; overflow-wrap: anywhere; }
+  .lane-title { min-width: 0; overflow-wrap: normal; }
+  .col.quiet h2 { font-size: 14px; }
   .dot { flex: none; position: relative; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); }
   .tone-done .dot::after { content: ""; position: absolute; left: 6px; top: 3px; width: 4px; height: 8px;
-                           border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+                           border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
   .count { margin-left: auto; flex: none; min-width: 24px; text-align: center; font: 600 12px var(--mono); padding: 2px 8px;
-           border-radius: 999px; color: var(--ink); background: #0b1220;
-           background: color-mix(in srgb, var(--accent) 22%, #0b1220);
+           border-radius: 999px; color: var(--ink); background: var(--count-base);
+           background: color-mix(in srgb, var(--accent) 22%, var(--count-base));
            border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
-  .col.alert { border-color: var(--alert); box-shadow: 0 0 0 1px var(--alert), 0 0 18px rgba(248,113,113,.35); }
+  .col.alert { border-color: var(--alert); box-shadow: 0 0 0 1px var(--alert), 0 0 18px color-mix(in srgb, var(--alert) 40%, transparent); }
   .col.alert h2 { color: var(--alert); }
   .col.quiet .lane { min-height: 24px; }
   .lane { display: flex; flex-direction: column; gap: 10px; min-height: 40px; }
@@ -67,13 +108,13 @@
   .card:hover { border-color: var(--muted); transform: translateY(-1px); }
   .card .open { display: block; width: 100%; padding: 0; margin: 0; border: 0; background: none; font: inherit;
                 color: inherit; text-align: left; cursor: pointer; border-radius: 4px; }
-  .card .open:focus-visible { outline: 2px solid #dbe6ff; outline-offset: 2px; }
+  .card .open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .card .open .id, .card .open .title { display: block; }
   .card-top { display: flex; align-items: flex-start; gap: 8px; }
   .card-top .open { flex: 1; min-width: 0; }
-  .done-check { flex: none; position: relative; width: 20px; height: 20px; border-radius: 50%; background: #22c55e; }
+  .done-check { flex: none; position: relative; width: 20px; height: 20px; border-radius: 50%; background: var(--done); }
   .done-check::after { content: ""; position: absolute; left: 7px; top: 3px; width: 4px; height: 9px;
-                       border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+                       border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
   .links { display: flex; flex-wrap: wrap; gap: 0 10px; margin: 2px 0; font-size: 11.5px; }
   .links .link { display: inline-flex; align-items: center; min-height: 24px; color: var(--muted); text-underline-offset: 2px; }
   .links .link:hover, .links .link:focus-visible { color: var(--ink); }
@@ -88,7 +129,7 @@
   .round .n { font: 10px var(--mono); color: var(--muted); width: 20px; }
   .chip { font-size: 10.5px; line-height: 16px; padding: 0 8px; border-radius: 999px;
           background: var(--chip-bg); color: var(--pending); border: 1px dashed var(--pending);
-          background: color-mix(in srgb, var(--accent, #a5b4fc) 16%, var(--panel)); }
+          background: color-mix(in srgb, var(--accent, var(--pending)) 16%, var(--panel)); }
   .chip.PASS { background: var(--pass-bg); color: var(--pass); border: 1px solid transparent; }
   .chip.CHANGES { background: var(--changes-bg); color: var(--changes); border: 1px solid transparent; }
   .chip.FAIL { background: var(--alert-bg); color: var(--alert); border: 1px solid transparent; }
@@ -105,10 +146,10 @@
   code { font: 12px var(--mono); background: var(--chip-bg); padding: 1px 5px; border-radius: 4px; }
   a { color: inherit; }
 
-  .scrim { position: fixed; inset: 0; background: rgba(2,6,14,.6); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .scrim { position: fixed; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .2s; }
   .scrim.open { opacity: 1; pointer-events: auto; }
   .drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(760px, 100%); display: flex; flex-direction: column;
-            background: var(--panel); border-left: 1px solid var(--line); box-shadow: -16px 0 48px rgba(0,0,0,.5);
+            background: var(--panel); border-left: 1px solid var(--line); box-shadow: -16px 0 48px var(--shadow);
             transform: translateX(100%); transition: transform .22s ease; }
   .drawer.open { transform: none; }
   .drawer-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
@@ -118,7 +159,7 @@
   .files { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 22px; border-bottom: 1px solid var(--line); }
   .file { font: 11.5px var(--mono); padding: 3px 10px; border-radius: 999px; cursor: pointer;
           border: 1px solid var(--line); background: none; color: var(--ink); }
-  .file[aria-selected="true"] { background: #1e6bff; color: #fff; border-color: #1e6bff; }
+  .file[aria-selected="true"] { background: var(--active); color: var(--on-accent); border-color: var(--active); }
   .file.missing { opacity: .55; }
   .doc { flex: 1; overflow: auto; padding: 18px 26px 48px; }
   .doc h1, .doc h2, .doc h3 { line-height: 1.25; margin: 1.2em 0 .5em; }
@@ -140,8 +181,8 @@
   .agent { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
            font-size: 10.5px; line-height: 16px; padding: 0 8px 0 2px; border-radius: 999px;
            background: var(--chip-bg); color: var(--ink); border: 1px solid var(--line);
-           background: color-mix(in srgb, var(--accent, #a5b4fc) 18%, var(--panel));
-           border-color: color-mix(in srgb, var(--accent, #a5b4fc) 40%, transparent); }
+           background: color-mix(in srgb, var(--accent, var(--pending)) 18%, var(--panel));
+           border-color: color-mix(in srgb, var(--accent, var(--pending)) 40%, transparent); }
   .agent .avatar { flex: none; display: grid; place-items: center; width: 22px; height: 22px; }
   .agent .avatar svg { display: block; width: 22px; height: 22px; overflow: visible; }
   .agent-label { min-width: 0; overflow-wrap: anywhere; }
@@ -171,6 +212,7 @@
   <h1>Software Factory</h1>
   <span class="tag" id="demo" hidden>DEMO</span>
   <a class="parked" id="parked" href="#col-needs-human" hidden></a>
+  <button class="theme-toggle" id="theme-toggle" type="button"><span id="theme-icon" aria-hidden="true"></span></button>
   <span class="status" id="status">connecting…</span>
 </header>
 <main class="board" id="board"></main>
@@ -218,7 +260,9 @@
     "demoLink": "Or open the <a href=\"?demo\">demo board<\/a>.",
     "notWritten": "Not written yet.",
     "parkedHuman": "{n} need{s} a human",
-    "parkedInfo": "{n} waiting for info"
+    "parkedInfo": "{n} waiting for info",
+    "themeToLight": "Switch to light theme",
+    "themeToNavy": "Switch to navy theme"
   },
   "es": {
     "columns": {
@@ -243,7 +287,9 @@
     "demoLink": "O abrí el <a href=\"?demo\">tablero de demo<\/a>.",
     "notWritten": "Todavía no está escrito.",
     "parkedHuman": "Necesitan una persona: {n}",
-    "parkedInfo": "Esperando info: {n}"
+    "parkedInfo": "Esperando info: {n}",
+    "themeToLight": "Cambiar al tema claro",
+    "themeToNavy": "Cambiar al tema navy"
   },
   "pt": {
     "columns": {
@@ -268,7 +314,9 @@
     "demoLink": "Ou abra o <a href=\"?demo\">quadro de demo<\/a>.",
     "notWritten": "Ainda não foi escrito.",
     "parkedHuman": "Precisam de uma pessoa: {n}",
-    "parkedInfo": "Aguardando info: {n}"
+    "parkedInfo": "Aguardando info: {n}",
+    "themeToLight": "Mudar para o tema claro",
+    "themeToNavy": "Mudar para o tema navy"
   }
 }
 </script>
@@ -292,6 +340,16 @@ function setLanguage() {
   const lang = Object.hasOwn(I18N, board.language) ? board.language : 'en';
   T = I18N[lang];
   document.documentElement.lang = lang;
+  syncToggle();
+}
+// Label names the action; the icon shows the theme you would switch to.
+function syncToggle() {
+  const light = window.factoryTheme?.current() === 'light';
+  const label = light ? T.themeToNavy : T.themeToLight;
+  const btn = document.getElementById('theme-toggle');
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+  document.getElementById('theme-icon').textContent = light ? '☾' : '☀';
 }
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
@@ -539,6 +597,11 @@ function md(src) {
   return out.join('\n');
 }
 
+$('theme-toggle').addEventListener('click', () => {
+  window.factoryTheme?.set(window.factoryTheme.current() === 'light' ? 'navy' : 'light');
+  syncToggle();
+});
+syncToggle();
 $('demo').hidden = !DEMO;
 poll();
 setInterval(poll, 2000);
