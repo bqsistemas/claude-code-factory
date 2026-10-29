@@ -92,7 +92,8 @@ test('AC-7: responsive, scroll, focus and i18n are intact', () => {
   const i18n = JSON.parse(html.match(/<script type="application\/json" id="i18n">([\s\S]*?)<\/script>/)[1]);
   const keys = Object.keys(i18n.en).sort();
   assert.deepEqual(keys, ['demoLink', 'emptyBoard', 'hintAwaitingMerge', 'hintNeedsHumanNoPr',
-    'hintNeedsHumanPr', 'hintNeedsInfo', 'notWritten', 'olderMerged', 'parkedHuman', 'parkedInfo', 'themeToLight', 'themeToNavy']);
+    'hintNeedsHumanPr', 'hintNeedsInfo', 'notWritten', 'olderMerged', 'parkedHuman', 'parkedInfo', 'statAgents', 'statCost',
+    'statJobs', 'statRunning', 'themeToLight', 'themeToNavy']);
   for (const l of ['es', 'pt']) assert.deepEqual(Object.keys(i18n[l]).sort(), keys);
 });
 

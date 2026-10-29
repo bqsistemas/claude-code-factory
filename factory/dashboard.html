@@ -86,6 +86,32 @@
   .col.quiet { flex: 0 0 auto; width: 44px; min-width: 0; padding: 8px 4px; align-items: center; }
   .col.quiet h2 { writing-mode: vertical-rl; margin: 0; font-size: 13px; }
   .col.quiet .count { margin-left: 0; }
+  /* Header stat tiles. */
+  .stats { display: flex; gap: 8px; align-self: center; flex-wrap: wrap; }
+  .stat { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 10px; border-radius: 999px;
+          background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .stat .v { font: 700 13px var(--mono); color: var(--ink); }
+
+  /* Agent Office and the reserved Pipeline panel: two equal halves above the kanban. */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; height: clamp(260px, 50vh, 480px);
+            padding: 8px 16px 0; }
+  .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px; border-radius: 14px;
+           background: var(--col); border: 1px solid var(--line); }
+  .panel h2 { margin: 0 0 6px; flex: none; font-size: 14px; font-weight: 700; color: var(--ink); }
+  .office-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #office-canvas { display: block; image-rendering: pixelated; }
+  #office-hits { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  .hit { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 1; }
+  .hit.token { z-index: 2; }
+  .hit.agent { z-index: 3; }
+  .hit:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+                     overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+  @media (max-width: 900px) {
+    .panels { grid-template-columns: 1fr; height: auto; }
+    .office-stage { min-height: 300px; }
+    .panel.pipeline { min-height: 80px; }
+  }
   @media (max-width: 640px) {
     body { display: block; height: auto; overflow: visible; }
     .board { flex-direction: column; align-items: stretch; overflow-x: visible; overflow-y: visible; padding: 8px 12px 16px; }
@@ -241,11 +267,30 @@
 <body>
 <header class="top">
   <h1>Software Factory</h1>
+  <span class="stats">
+    <span class="stat" id="stat-jobs"><span class="v">0</span><span class="l"></span></span>
+    <span class="stat" id="stat-running"><span class="v">0</span><span class="l"></span></span>
+    <span class="stat" id="stat-agents"><span class="v">0</span><span class="l"></span></span>
+    <span class="stat" id="stat-cost"><span class="v">$0.00</span><span class="l"></span></span>
+  </span>
   <span class="tag" id="demo" hidden>DEMO</span>
   <a class="parked" id="parked" href="#col-needs-human" hidden></a>
   <button class="theme-toggle" id="theme-toggle" type="button"><span id="theme-icon" aria-hidden="true"></span></button>
   <span class="status" id="status">connecting…</span>
 </header>
+<div class="panels">
+  <section class="panel office" id="office" aria-label="Agent Office">
+    <h2>Agent Office</h2>
+    <div class="office-stage" id="office-stage">
+      <canvas id="office-canvas" aria-hidden="true"></canvas>
+      <div id="office-hits"></div>
+    </div>
+    <ul id="office-live" class="visually-hidden" aria-live="polite"></ul>
+  </section>
+  <section class="panel pipeline" id="pipeline" aria-label="Pipeline">
+    <h2>Pipeline</h2>
+  </section>
+</div>
 <main class="board" id="board"></main>
 
 <div class="scrim" id="scrim"></div>
@@ -281,7 +326,11 @@
     "parkedInfo": "{n} waiting for info",
     "themeToLight": "Switch to light theme",
     "themeToNavy": "Switch to navy theme",
-    "olderMerged": "+{n} older"
+    "olderMerged": "+{n} older",
+    "statJobs": "Jobs",
+    "statRunning": "Running",
+    "statAgents": "Agents",
+    "statCost": "Cost"
   },
   "es": {
     "hintNeedsHumanPr": "hacé merge del PR para aprobar, o pedí un rework:",
@@ -295,7 +344,11 @@
     "parkedInfo": "Esperando info: {n}",
     "themeToLight": "Cambiar al tema claro",
     "themeToNavy": "Cambiar al tema navy",
-    "olderMerged": "+{n} anteriores"
+    "olderMerged": "+{n} anteriores",
+    "statJobs": "Jobs",
+    "statRunning": "En curso",
+    "statAgents": "Agentes",
+    "statCost": "Costo"
   },
   "pt": {
     "hintNeedsHumanPr": "faça o merge do PR para aprovar, ou peça um rework:",
@@ -309,7 +362,11 @@
     "parkedInfo": "Aguardando info: {n}",
     "themeToLight": "Mudar para o tema claro",
     "themeToNavy": "Mudar para o tema navy",
-    "olderMerged": "+{n} anteriores"
+    "olderMerged": "+{n} anteriores",
+    "statJobs": "Jobs",
+    "statRunning": "Em andamento",
+    "statAgents": "Agentes",
+    "statCost": "Custo"
   }
 }
 </script>
@@ -318,6 +375,11 @@ import {
   STAGE_COLUMNS, activeAgents, ago, agentsHtml, costTimeHtml, laneTone, linksHtml, olderMergedHtml, roundChipsHtml,
   roundsOf, splitMerged,
 } from './activity.js';
+import {
+  AREAS, CHARACTER_FOR, FURNITURE, MAP, SPRITES, WAYPOINTS, areaTone, describeOffice, formatCost, headerStats,
+  hitTargets, officeState, route,
+} from './office.js';
+import { AVATARS } from './avatars.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const BASE = DEMO ? 'demo/' : '';
@@ -416,6 +478,8 @@ async function poll() {
       board = JSON.parse(text);   // a half-written file throws and keeps the last good board
       lastText = text;
       render();
+      renderStats();
+      renderOffice();
       if (openJob) { cache.clear(); openDrawer(openJob, openFile); }
     }
     status.textContent = `live · updated ${ago(board.updated) || 'just now'}`;
@@ -582,6 +646,231 @@ function md(src) {
   }
   return out.join('\n');
 }
+
+// ---- header stats and the pixel-art Agent Office --------------------------------------
+// Board data only reaches the canvas through fillText and the hotspots through
+// setAttribute; nothing here is interpolated into markup.
+function renderStats() {
+  const s = headerStats(board.jobs);
+  const tiles = { 'stat-jobs': [s.total, T.statJobs], 'stat-running': [s.running, T.statRunning],
+    'stat-agents': [s.agents, T.statAgents], 'stat-cost': [formatCost(s.cost), T.statCost] };
+  for (const [id, [value, label]] of Object.entries(tiles)) {
+    const tile = $(id);
+    tile.querySelector('.v').textContent = String(value);
+    tile.querySelector('.l').textContent = label;
+  }
+}
+
+const SPRITE_URL = 'assets/pixel-office/PixelOfficeAssets.png';
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
+const SPEED = 48;                       // map pixels per second
+const TONE_VAR = { pending: '--pending', active: '#1e6bff', review: '#8b5cf6', done: '#22c55e', parked: '#f87171',
+  muted: '#64748b', neutral: '--muted' };
+const atlas = new Image();
+let atlasOk = false, office = null, officeKey = '', liveKey = '', scale = 1, raf = 0, last = 0;
+const walkers = new Map();              // agent -> { x, y, node, queue }
+let boxes = new Map();                  // "kind:key" -> screen-pixel box, for hotspots
+atlas.onload = () => { atlasOk = true; drawOffice(); };
+atlas.src = SPRITE_URL;
+
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const toneColor = (tone) => { const v = TONE_VAR[tone] || TONE_VAR.neutral; return v.startsWith('--') ? cssVar(v) : v; };
+const hits = $('office-hits');
+
+function fitCanvas() {
+  const stage = $('office-stage'), canvas = $('office-canvas');
+  const next = Math.max(1, Math.floor(Math.min(stage.clientWidth / MAP.width, stage.clientHeight / MAP.height)));
+  scale = next;
+  if (canvas.width !== MAP.width * scale || canvas.height !== MAP.height * scale) {
+    canvas.width = MAP.width * scale;
+    canvas.height = MAP.height * scale;
+  }
+  hits.style.left = canvas.offsetLeft + 'px';
+  hits.style.top = canvas.offsetTop + 'px';
+}
+
+function syncWalkers() {
+  for (const [agent, a] of Object.entries(office.agents)) {
+    let w = walkers.get(agent);
+    const at = WAYPOINTS.nodes[a.node];
+    if (!w) { w = { x: at.x, y: at.y, node: a.node, queue: [], target: a.node }; walkers.set(agent, w); }
+    if (w.target !== a.node) {
+      w.target = a.node;
+      const path = route(w.node, a.node);
+      if (REDUCED.matches || path.length < 2) { w.x = at.x; w.y = at.y; w.node = a.node; w.queue = []; }
+      else w.queue = path.slice(1);
+    }
+  }
+}
+
+function step(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  let moving = false;
+  for (const w of walkers.values()) {
+    let budget = SPEED * dt;
+    while (w.queue.length && budget > 0) {
+      const to = WAYPOINTS.nodes[w.queue[0]];
+      const dx = to.x - w.x, dy = to.y - w.y, d = Math.hypot(dx, dy);
+      if (d <= budget) { w.x = to.x; w.y = to.y; w.node = w.queue.shift(); budget -= d; }
+      else { w.x += (dx / d) * budget; w.y += (dy / d) * budget; budget = 0; }
+    }
+    if (w.queue.length) moving = true;
+  }
+  drawOffice(now, moving);
+  raf = moving ? requestAnimationFrame(step) : 0;
+}
+
+function kick() {
+  if (raf || ![...walkers.values()].some((w) => w.queue.length)) return;
+  last = performance.now();
+  raf = requestAnimationFrame(step);
+}
+
+function drawText(ctx, text, x, y, color, align = 'left') {
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText(text, x, y);
+}
+
+function drawOffice(now = 0, moving = false) {
+  const canvas = $('office-canvas');
+  if (!office) return;
+  fitCanvas();
+  const ctx = canvas.getContext('2d');
+  const S = scale, ink = cssVar('--ink'), line = cssVar('--line'), muted = cssVar('--muted');
+  ctx.imageSmoothingEnabled = false;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+  ctx.fillStyle = cssVar('--col');
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const nextBoxes = new Map();
+  for (const area of AREAS) {
+    const { x, y, w, h } = area.rect;
+    ctx.globalAlpha = 0.14; ctx.fillStyle = toneColor(areaTone(area.id)); ctx.fillRect(x * S, y * S, w * S, h * S);
+    ctx.globalAlpha = 1; ctx.strokeStyle = line; ctx.lineWidth = 1;
+    ctx.strokeRect(x * S + 0.5, y * S + 0.5, w * S - 1, h * S - 1);
+    drawText(ctx, area.label, x * S + 4, y * S + 12, muted);
+    nextBoxes.set(`area:${area.id}`, { x: x * S, y: y * S, w: w * S, h: h * S });
+  }
+  const sprite = (name, x, y) => {
+    const r = SPRITES[name];
+    if (atlasOk) ctx.drawImage(atlas, r.x, r.y, r.w, r.h, x * S, y * S, r.w * S, r.h * S);
+  };
+  const furn = FURNITURE.map((f) => ({ ...f, r: SPRITES[f.sprite] })).sort((a, b) => a.y + a.r.h - (b.y + b.r.h));
+  for (const f of furn) sprite(f.sprite, f.x, f.y);
+  const at = (name) => FURNITURE.find((f) => f.sprite === name);
+  // Gate terminal: lit while a job is in gate, with the latest verdict.
+  const gate = at('terminal'), gr = SPRITES.terminal;
+  ctx.globalAlpha = office.gate.lit ? 0.55 : 0.25;
+  ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
+  ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
+  ctx.globalAlpha = 1;
+  drawText(ctx, 'GATE', (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S - 2, '#ffffff', 'center');
+  if (office.gate.result) drawText(ctx, office.gate.result, (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S + 11,
+    office.gate.result === 'PASS' ? '#bbf7d0' : '#fecaca', 'center');
+  // Meeting table: the issue under review.
+  if (office.meeting) {
+    const t = at('deskLong'), tr = SPRITES.deskLong;
+    drawText(ctx, office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S + 4, '#ffffff', 'center');
+  }
+  // Escalation sign: labels of the jobs that need a human.
+  const sign = at('sign'), sr = SPRITES.sign;
+  const labels = office.escalation.map((t) => t.label);
+  const shown = labels.length > 3 ? [...labels.slice(0, 2), `+${labels.length - 2}`] : labels;
+  shown.forEach((l, i) => drawText(ctx, l, (sign.x + sr.w / 2) * S, (sign.y + 2) * S + 11 * (i + 1), '#1f2333', 'center'));
+  // Archive shelf and bin: merged and rejected counts.
+  const shelf = at('shelf'), shr = SPRITES.shelf, bin = at('bin'), br = SPRITES.bin;
+  drawText(ctx, `✓${office.archive.merged}`, (shelf.x + shr.w / 2) * S, (shelf.y + shr.h) * S + 12, toneColor('done'), 'center');
+  drawText(ctx, `✗${office.archive.rejected}`, (bin.x + br.w / 2) * S, (bin.y + br.h) * S + 12, toneColor('muted'), 'center');
+  // Job folders per area.
+  for (const area of AREAS) {
+    const list = area.id === 'escalation' ? [] : office.tokens[area.id] || [];
+    let x = area.rect.x * S + 4;
+    const y = (area.rect.y + area.rect.h) * S - 17;
+    for (const t of list) {
+      const wpx = Math.max(16 * S, ctx.measureText(t.label).width + 8);
+      if (x + wpx > (area.rect.x + area.rect.w) * S) break;
+      ctx.fillStyle = '#fcd34d'; ctx.fillRect(x, y, wpx, 14);
+      ctx.fillStyle = '#f59e0b'; ctx.fillRect(x, y - 3, Math.min(wpx, 8), 3);
+      ctx.strokeStyle = '#1f2333'; ctx.strokeRect(x + 0.5, y + 0.5, wpx - 1, 13);
+      drawText(ctx, t.label, x + wpx / 2, y + 11, '#1f2333', 'center');
+      nextBoxes.set(`token:${t.jobId}`, { x, y: y - 3, w: wpx, h: 17 });
+      x += wpx + 4;
+    }
+  }
+  // Characters, back to front, then their bubbles.
+  const order = Object.keys(office.agents).sort((a, b) => walkers.get(a).y - walkers.get(b).y);
+  const bubbles = [];
+  for (const agent of order) {
+    const w = walkers.get(agent), st = office.agents[agent];
+    const r = SPRITES[CHARACTER_FOR[agent]];
+    const bob = moving && w.queue.length && !REDUCED.matches ? Math.floor(now / 140) % 2 : 0;
+    const left = Math.round((w.x - r.w / 2) * S), top = Math.round((w.y - r.h - bob) * S);
+    const color = AVATARS[agent].color;
+    ctx.globalAlpha = 0.45; ctx.fillStyle = color;
+    ctx.fillRect(left, Math.round(w.y * S) - S, r.w * S, S * 2);
+    ctx.globalAlpha = 1;
+    if (atlasOk) ctx.drawImage(atlas, r.x, r.y, r.w, r.h, left, top, r.w * S, r.h * S);
+    else { ctx.fillStyle = color; ctx.fillRect(left + 3 * S, top + 4 * S, (r.w - 6) * S, (r.h - 4) * S); }
+    nextBoxes.set(`agent:${agent}`, { x: left, y: top, w: r.w * S, h: r.h * S });
+    bubbles.push({ text: st.bubble, color, cx: left + (r.w * S) / 2, y: top });
+  }
+  for (const b of bubbles) {
+    const tw = ctx.measureText(b.text).width + 8;
+    const bx = Math.min(Math.max(0, b.cx - tw / 2), canvas.width - tw), by = Math.max(0, b.y - 18);
+    ctx.fillStyle = b.color; ctx.fillRect(bx, by, tw, 15);
+    ctx.strokeStyle = '#1f2333'; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, 14);
+    drawText(ctx, b.text, bx + tw / 2, by + 11, '#ffffff', 'center');
+  }
+  boxes = nextBoxes;
+  placeHits();
+}
+
+function placeHits() {
+  for (const btn of hits.children) {
+    const box = boxes.get(btn.dataset.box);
+    if (!box) continue;
+    btn.style.left = Math.round(box.x) + 'px'; btn.style.top = Math.round(box.y) + 'px';
+    btn.style.width = Math.round(box.w) + 'px'; btn.style.height = Math.round(box.h) + 'px';
+  }
+}
+
+function renderOffice() {
+  office = officeState(board.jobs);
+  const targets = hitTargets(office, board.jobs);
+  const key = JSON.stringify(targets);
+  if (key !== officeKey) {
+    officeKey = key;
+    hits.replaceChildren(...targets.map((t) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `hit ${t.kind}`;
+      btn.dataset.id = t.jobId;
+      btn.dataset.box = `${t.kind}:${t.key}`;
+      btn.setAttribute('aria-label', t.label);
+      btn.setAttribute('title', t.label);
+      return btn;
+    }));
+  }
+  const lines = describeOffice(office);
+  const text = lines.join('\n');
+  if (text !== liveKey) {
+    liveKey = text;
+    $('office-live').replaceChildren(...lines.map((l) => { const li = document.createElement('li'); li.textContent = l; return li; }));
+  }
+  syncWalkers();
+  drawOffice();
+  kick();
+}
+
+hits.addEventListener('click', (e) => {
+  const btn = e.target.closest('.hit');
+  if (btn) openDrawer(btn.dataset.id);
+});
+if (typeof ResizeObserver === 'function') new ResizeObserver(() => drawOffice()).observe($('office-stage'));
+else window.addEventListener('resize', () => drawOffice());
+new MutationObserver(() => drawOffice()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+renderStats();
+renderOffice();
 
 $('theme-toggle').addEventListener('click', () => {
   window.factoryTheme?.set(window.factoryTheme.current() === 'light' ? 'navy' : 'light');
