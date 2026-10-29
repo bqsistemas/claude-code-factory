@@ -47,8 +47,8 @@ export const WAYPOINTS = deepFreeze({
     seat_sec: { x: 188, y: 54 }, seat_ux: { x: 204, y: 54 }, seat_ui: { x: 220, y: 54 }, seat_code: { x: 236, y: 54 },
     seat_approver: { x: 30, y: 110 },
     meet_sec: { x: 192, y: 24 }, meet_ux: { x: 207, y: 24 }, meet_ui: { x: 222, y: 24 }, meet_code: { x: 237, y: 24 },
-    lounge_1: { x: 152, y: 110 }, lounge_2: { x: 168, y: 110 }, lounge_3: { x: 184, y: 110 }, lounge_4: { x: 200, y: 110 },
-    lounge_5: { x: 152, y: 130 }, lounge_6: { x: 168, y: 130 }, lounge_7: { x: 184, y: 130 }, lounge_8: { x: 200, y: 130 },
+    lounge_1: { x: 156, y: 92 }, lounge_2: { x: 196, y: 100 }, lounge_3: { x: 156, y: 108 }, lounge_4: { x: 196, y: 116 },
+    lounge_5: { x: 156, y: 124 }, lounge_6: { x: 196, y: 132 }, lounge_7: { x: 176, y: 140 }, lounge_8: { x: 176, y: 84 },
   },
   edges: [
     ['cor_a', 'cor_b'], ['cor_b', 'cor_c'], ['cor_c', 'cor_d'], ['cor_d', 'cor_e'], ['cor_e', 'cor_f'],
@@ -59,7 +59,7 @@ export const WAYPOINTS = deepFreeze({
     ['meet_sec', 'door_review'], ['meet_ux', 'door_review'], ['meet_ui', 'door_review'], ['meet_code', 'door_review'],
     ['seat_approver', 'door_release'],
     ['lounge_1', 'door_lounge'], ['lounge_2', 'door_lounge'], ['lounge_3', 'door_lounge'], ['lounge_4', 'door_lounge'],
-    ['lounge_5', 'lounge_1'], ['lounge_6', 'lounge_2'], ['lounge_7', 'lounge_3'], ['lounge_8', 'lounge_4'],
+    ['lounge_5', 'door_lounge'], ['lounge_6', 'door_lounge'], ['lounge_7', 'door_lounge'], ['lounge_8', 'door_lounge'],
   ],
 });
 
@@ -122,7 +122,7 @@ export const FURNITURE = deepFreeze([
   { sprite: 'desk', x: 91, y: 46 }, { sprite: 'desk', x: 127, y: 46 },
   { sprite: 'terminal', x: 154, y: 28 }, { sprite: 'plant', x: 90, y: 10 },
   { sprite: 'deskLong', x: 187, y: 28 },
-  { sprite: 'desk', x: 175, y: 56 }, { sprite: 'desk', x: 207, y: 56 },
+  { sprite: 'desk', x: 175, y: 46 }, { sprite: 'desk', x: 207, y: 46 },
   { sprite: 'plant', x: 240, y: 36 },
   { sprite: 'desk', x: 17, y: 112 }, { sprite: 'plant', x: 66, y: 90 },
   { sprite: 'sign', x: 100, y: 84 },

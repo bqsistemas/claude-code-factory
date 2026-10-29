@@ -109,7 +109,7 @@
                      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   @media (max-width: 900px) {
     .panels { grid-template-columns: 1fr; height: auto; }
-    .office-stage { min-height: 300px; }
+    .office-stage { flex: none; width: 100%; aspect-ratio: 256 / 144; }
     .panel.pipeline { min-height: 80px; }
   }
   @media (max-width: 640px) {
@@ -268,10 +268,10 @@
 <header class="top">
   <h1>Software Factory</h1>
   <span class="stats">
-    <span class="stat" id="stat-jobs"><span class="v">0</span><span class="l"></span></span>
-    <span class="stat" id="stat-running"><span class="v">0</span><span class="l"></span></span>
-    <span class="stat" id="stat-agents"><span class="v">0</span><span class="l"></span></span>
-    <span class="stat" id="stat-cost"><span class="v">$0.00</span><span class="l"></span></span>
+    <span class="stat" id="stat-jobs"><span class="v">–</span><span class="l"></span></span>
+    <span class="stat" id="stat-running"><span class="v">–</span><span class="l"></span></span>
+    <span class="stat" id="stat-agents"><span class="v">–</span><span class="l"></span></span>
+    <span class="stat" id="stat-cost"><span class="v">–</span><span class="l"></span></span>
   </span>
   <span class="tag" id="demo" hidden>DEMO</span>
   <a class="parked" id="parked" href="#col-needs-human" hidden></a>
@@ -388,7 +388,7 @@ const ALERT = new Set(['needs-human', 'needs-info']);
 const DONE = new Set(['merged', 'rejected']);
 
 const I18N = JSON.parse(document.getElementById('i18n').textContent);
-let board = { jobs: [] }, lastText = '', openJob = null, openFile = null, olderOpen = false;
+let board = { jobs: [] }, loaded = false, lastText = '', openJob = null, openFile = null, olderOpen = false;
 const cache = new Map();
 // Board data only selects a dictionary key; it is never interpolated as markup.
 let T = I18N.en;
@@ -478,6 +478,7 @@ async function poll() {
       board = JSON.parse(text);   // a half-written file throws and keeps the last good board
       lastText = text;
       render();
+      loaded = true;
       renderStats();
       renderOffice();
       if (openJob) { cache.clear(); openDrawer(openJob, openFile); }
@@ -656,7 +657,7 @@ function renderStats() {
     'stat-agents': [s.agents, T.statAgents], 'stat-cost': [formatCost(s.cost), T.statCost] };
   for (const [id, [value, label]] of Object.entries(tiles)) {
     const tile = $(id);
-    tile.querySelector('.v').textContent = String(value);
+    tile.querySelector('.v').textContent = loaded ? String(value) : '–';
     tile.querySelector('.l').textContent = label;
   }
 }
@@ -664,8 +665,6 @@ function renderStats() {
 const SPRITE_URL = 'assets/pixel-office/PixelOfficeAssets.png';
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 const SPEED = 48;                       // map pixels per second
-const TONE_VAR = { pending: '--pending', active: '#1e6bff', review: '#8b5cf6', done: '#22c55e', parked: '#f87171',
-  muted: '#64748b', neutral: '--muted' };
 const atlas = new Image();
 let atlasOk = false, office = null, officeKey = '', liveKey = '', scale = 1, raf = 0, last = 0;
 const walkers = new Map();              // agent -> { x, y, node, queue }
@@ -674,7 +673,22 @@ atlas.onload = () => { atlasOk = true; drawOffice(); };
 atlas.src = SPRITE_URL;
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const toneColor = (tone) => { const v = TONE_VAR[tone] || TONE_VAR.neutral; return v.startsWith('--') ? cssVar(v) : v; };
+// Tones come from the kanban's own `.col.tone-*` rules via a probe, so there is one source.
+let toneCache = null;
+function tones() {
+  if (toneCache) return toneCache;
+  const out = { neutral: cssVar('--muted') };
+  for (const tone of ['pending', 'active', 'review', 'done', 'parked', 'muted']) {
+    const probe = document.createElement('div');
+    probe.className = `col tone-${tone}`;
+    probe.hidden = true;
+    document.body.appendChild(probe);
+    out[tone] = getComputedStyle(probe).getPropertyValue('--accent').trim();
+    probe.remove();
+  }
+  return (toneCache = out);
+}
+const toneColor = (tone) => tones()[tone] || tones().neutral;
 const hits = $('office-hits');
 
 function fitCanvas() {
@@ -779,8 +793,15 @@ function drawOffice(now = 0, moving = false) {
   shown.forEach((l, i) => drawText(ctx, l, (sign.x + sr.w / 2) * S, (sign.y + 2) * S + 11 * (i + 1), '#1f2333', 'center'));
   // Archive shelf and bin: merged and rejected counts.
   const shelf = at('shelf'), shr = SPRITES.shelf, bin = at('bin'), br = SPRITES.bin;
-  drawText(ctx, `✓${office.archive.merged}`, (shelf.x + shr.w / 2) * S, (shelf.y + shr.h) * S + 12, toneColor('done'), 'center');
-  drawText(ctx, `✗${office.archive.rejected}`, (bin.x + br.w / 2) * S, (bin.y + br.h) * S + 12, toneColor('muted'), 'center');
+  const chip = (text, cx, y, tone) => {
+    const tw = ctx.measureText(text).width + 10;
+    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, y, tw, 15);
+    ctx.strokeStyle = toneColor(tone); ctx.lineWidth = 2; ctx.strokeRect(cx - tw / 2 + 1, y + 1, tw - 2, 13);
+    ctx.lineWidth = 1;
+    drawText(ctx, text, cx, y + 11, ink, 'center');
+  };
+  chip(`✓${office.archive.merged}`, (shelf.x + shr.w / 2) * S, (shelf.y + shr.h) * S + 2, 'done');
+  chip(`✗${office.archive.rejected}`, (bin.x + br.w / 2) * S, (bin.y + br.h) * S + 2, 'muted');
   // Job folders per area.
   for (const area of AREAS) {
     const list = area.id === 'escalation' ? [] : office.tokens[area.id] || [];
@@ -814,12 +835,22 @@ function drawOffice(now = 0, moving = false) {
     nextBoxes.set(`agent:${agent}`, { x: left, y: top, w: r.w * S, h: r.h * S });
     bubbles.push({ text: st.bubble, color, cx: left + (r.w * S) / 2, y: top });
   }
-  for (const b of bubbles) {
-    const tw = ctx.measureText(b.text).width + 8;
-    const bx = Math.min(Math.max(0, b.cx - tw / 2), canvas.width - tw), by = Math.max(0, b.y - 18);
-    ctx.fillStyle = b.color; ctx.fillRect(bx, by, tw, 15);
-    ctx.strokeStyle = '#1f2333'; ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, 14);
-    drawText(ctx, b.text, bx + tw / 2, by + 11, '#ffffff', 'center');
+  // Panel-colored tags with ink text (readable in both themes); the role color is the border.
+  // Tags are pushed up, then down, until none overlap.
+  const placed = [];
+  for (const b of bubbles.sort((p, q) => p.y - q.y)) {
+    b.w = ctx.measureText(b.text).width + 10;
+    b.x = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w);
+    const free = (y) => placed.every((o) => y + 15 <= o.by || o.by + 15 <= y || b.x + b.w <= o.x || o.x + o.w <= b.x);
+    let by = Math.max(0, b.y - 18);
+    while (by > 0 && !free(by)) by -= 16;
+    if (by <= 0 && !free(Math.max(0, by))) { by = Math.max(0, b.y - 18); while (by + 15 < canvas.height && !free(by)) by += 16; }
+    b.by = Math.max(0, by);
+    placed.push(b);
+    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
+    ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.by + 1, b.w - 2, 13);
+    ctx.lineWidth = 1;
+    drawText(ctx, b.text, b.x + b.w / 2, b.by + 11, ink, 'center');
   }
   boxes = nextBoxes;
   placeHits();
@@ -828,6 +859,7 @@ function drawOffice(now = 0, moving = false) {
 function placeHits() {
   for (const btn of hits.children) {
     const box = boxes.get(btn.dataset.box);
+    btn.hidden = !box;
     if (!box) continue;
     btn.style.left = Math.round(box.x) + 'px'; btn.style.top = Math.round(box.y) + 'px';
     btn.style.width = Math.round(box.w) + 'px'; btn.style.height = Math.round(box.h) + 'px';
@@ -840,16 +872,25 @@ function renderOffice() {
   const key = JSON.stringify(targets);
   if (key !== officeKey) {
     officeKey = key;
-    hits.replaceChildren(...targets.map((t) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
+    // Patch buttons in place (keyed by data-box) so keyboard focus and the drawer's return target survive polls.
+    const existing = new Map([...hits.children].map((b) => [b.dataset.box, b]));
+    const keep = new Set();
+    for (const t of targets) {
+      const id = `${t.kind}:${t.key}`;
+      let btn = existing.get(id);
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.type = 'button';
+        btn.dataset.box = id;
+        hits.appendChild(btn);
+      }
+      keep.add(id);
       btn.className = `hit ${t.kind}`;
       btn.dataset.id = t.jobId;
-      btn.dataset.box = `${t.kind}:${t.key}`;
       btn.setAttribute('aria-label', t.label);
       btn.setAttribute('title', t.label);
-      return btn;
-    }));
+    }
+    for (const [id, btn] of existing) if (!keep.has(id)) btn.remove();
   }
   const lines = describeOffice(office);
   const text = lines.join('\n');
@@ -868,7 +909,7 @@ hits.addEventListener('click', (e) => {
 });
 if (typeof ResizeObserver === 'function') new ResizeObserver(() => drawOffice()).observe($('office-stage'));
 else window.addEventListener('resize', () => drawOffice());
-new MutationObserver(() => drawOffice()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+new MutationObserver(() => { toneCache = null; drawOffice(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 renderStats();
 renderOffice();
 
