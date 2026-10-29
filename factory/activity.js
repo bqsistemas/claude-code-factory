@@ -36,6 +36,19 @@ export const STAGE_COLUMNS = Object.freeze([
   ['rejected', 'Rejected'],
 ].map((column) => Object.freeze(column)));
 
+/** Visual tone per stage; drives the column accent colour on the dashboard. */
+export const LANE_TONES = Object.freeze({
+  intake: 'pending', 'needs-info': 'pending',
+  spec: 'active', build: 'active', gate: 'active',
+  review: 'review', approve: 'review', merging: 'review', 'awaiting-merge': 'review',
+  merged: 'done', 'needs-human': 'parked', rejected: 'muted',
+});
+
+/** One of six fixed tone strings; unknown or non-string stages fall back to 'pending'. Never echoes its input. */
+export function laneTone(stage) {
+  return typeof stage === 'string' && Object.hasOwn(LANE_TONES, stage) ? LANE_TONES[stage] : 'pending';
+}
+
 const SINGLE = Object.freeze({ intake: 'intake', spec: 'spec-writer', build: 'builder', approve: 'approver' });
 const LENSES = Object.freeze(['security', 'ux', 'ui', 'code']);
 const GATE_STATES = new Set(['PASS', 'FAIL']);
