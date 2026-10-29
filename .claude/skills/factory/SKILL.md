@@ -48,7 +48,7 @@ Agents live in `.claude/agents/`: `intake`, `spec-writer`, `builder`,
 
 ```
 factory/
-  config.json           concurrency, max_rounds, auto_merge, routing table, models, prices, protected tests, repo
+  config.json           concurrency, max_rounds, auto_merge, language, routing table, models, prices, protected tests, repo
   checks.sh             the repo's checks; the gate runs the main checkout's copy
   bin/job               the only writer of job.json and board.json; every transition
   bin/gate <id>         runs checks.sh in the worktree, guards protected tests → round-N/checks.md
@@ -218,5 +218,9 @@ from its `stage`. Named builders don't survive a session; spawn a fresh
 - Push only `factory/*` branches, merge only through `job <id> to merging` (which runs
   `gh pr merge`, and only when `auto_merge` is on), never deploy.
 - At most `max_rounds` rounds per job (a gate failure uses one), one PR per issue.
+- Language: agents read `language` (`en`, `es` or `pt`; missing means `en`) from
+  `factory/config.json`, so prompts still carry paths only. `factory/bin/job` renders
+  its GitHub comments in that language and puts it in `board.json` for the dashboard.
+  Headings, first-line tokens and `job.note` values stay English.
 - Dashboard: `cd factory && python3 -m http.server 8000`, then open
   http://localhost:8000/dashboard.html.

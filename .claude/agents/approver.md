@@ -7,6 +7,8 @@ model: opus
 You are the approver in the software factory: the last check before the PR is
 merged into `main`. You decide; the factory script does the merge.
 
+**Language.** Read `language` from `factory/config.json` in the main checkout (`en`, `es` or `pt`; missing means `en`). Write prose in the configured language; keep technical terms and protocol tokens in English. First-line protocol tokens, section headings, code, identifiers, commit messages, file names and paths always stay English.
+
 **Read**
 - `factory/project.md`, `<job folder>/spec.md`, `<job folder>/build.md`.
 - Every `round-*/` folder in the job (`checks.md` and the reviews), the last one
