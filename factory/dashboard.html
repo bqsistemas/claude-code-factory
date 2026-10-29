@@ -109,7 +109,9 @@
                      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   @media (max-width: 900px) {
     .panels { grid-template-columns: 1fr; height: auto; }
-    .office-stage { flex: none; width: 100%; aspect-ratio: 256 / 144; }
+    /* Stacked: the map keeps scale 2 or more (tags stay legible) and scrolls sideways inside the panel if needed. */
+    .office-stage { display: block; flex: none; width: 100%; overflow-x: auto; }
+    #office-canvas { margin: 0 auto; }
     .panel.pipeline { min-height: 80px; }
   }
   @media (max-width: 640px) {
@@ -693,7 +695,9 @@ const hits = $('office-hits');
 
 function fitCanvas() {
   const stage = $('office-stage'), canvas = $('office-canvas');
-  const next = Math.max(1, Math.floor(Math.min(stage.clientWidth / MAP.width, stage.clientHeight / MAP.height)));
+  const stacked = window.matchMedia('(max-width: 900px)').matches;
+  const next = stacked ? Math.max(2, Math.floor(stage.clientWidth / MAP.width))
+    : Math.max(1, Math.floor(Math.min(stage.clientWidth / MAP.width, stage.clientHeight / MAP.height)));
   scale = next;
   if (canvas.width !== MAP.width * scale || canvas.height !== MAP.height * scale) {
     canvas.width = MAP.width * scale;
@@ -784,7 +788,7 @@ function drawOffice(now = 0, moving = false) {
   // Meeting table: the issue under review.
   if (office.meeting) {
     const t = at('deskLong'), tr = SPRITES.deskLong;
-    drawText(ctx, office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S + 4, '#ffffff', 'center');
+    drawText(ctx, office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S + 4, '#1f2333', 'center');
   }
   // Escalation sign: labels of the jobs that need a human.
   const sign = at('sign'), sr = SPRITES.sign;
@@ -843,28 +847,38 @@ function drawOffice(now = 0, moving = false) {
     if (atlasOk) ctx.drawImage(atlas, r.x, r.y, r.w, r.h, left, top, r.w * S, r.h * S);
     else { ctx.fillStyle = color; ctx.fillRect(left + 3 * S, top + 4 * S, (r.w - 6) * S, (r.h - 4) * S); }
     nextBoxes.set(`agent:${agent}`, { x: left, y: top, w: r.w * S, h: r.h * S });
-    bubbles.push({ text: st.bubble, color, cx: left + (r.w * S) / 2, y: top });
+    bubbles.push({ text: st.bubble, color, place: st.place, cx: left + (r.w * S) / 2, y: top });
   }
   // Panel-colored tags with ink text (readable in both themes); the role color is the border.
-  // A tag may not cover another tag, an area label, the Gate terminal, the Escalation sign or the meeting table:
-  // it looks for the nearest free slot above, then below, its character.
+  // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation sign or the
+  // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
+  // character; with no free slot the tag is omitted (the accessible list still names every agent).
   const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
   const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'),
+    ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
     ...AREAS.map((a) => ({ x: a.rect.x * S + 2, y: a.rect.y * S + 1, w: ctx.measureText(a.label).width + 6, h: 17 }))];
   const placed = [];
-  for (const b of bubbles.sort((p, q) => p.y - q.y)) {
+  const busy = (st) => st !== 'lounge';
+  bubbles.sort((p, q) => (busy(p.place) === busy(q.place) ? p.y - q.y : busy(p.place) ? -1 : 1));
+  for (const b of bubbles) {
     b.w = ctx.measureText(b.text).width + 10;
-    b.x = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w);
-    const hit = (o, y) => !(y + 15 <= o.y || o.y + o.h <= y || b.x + b.w <= o.x || o.x + o.w <= b.x);
-    const free = (y) => y >= 0 && y + 15 <= canvas.height && !placed.some((o) => hit({ x: o.x, y: o.by, w: o.w, h: 15 }, y)) && !obstacles.some((o) => hit(o, y));
-    const home = Math.max(0, b.y - 18);
-    let by = home;
-    for (let d = 0; d <= canvas.height && !free(by); d += 4) {
-      by = home - d;
-      if (!free(by)) by = home + d;
+    const free = (x, y) => y >= 0 && y + 15 <= canvas.height && x >= 0 && x + b.w <= canvas.width &&
+      !placed.some((o) => !(y + 15 <= o.by || o.by + 15 <= y || x + b.w <= o.x || o.x + o.w <= x)) &&
+      !obstacles.some((o) => !(y + 15 <= o.y || o.y + o.h <= y || x + b.w <= o.x || o.x + o.w <= x));
+    const home = b.y - 18, x0 = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w);
+    const shift = b.w / 2 + 24;
+    let spot = null;
+    for (let d = 0; d <= 48 && !spot; d += 4) {
+      for (const dy of d ? [-d, d] : [0]) {
+        for (const dx of [0, -shift, shift]) {
+          const x = Math.min(Math.max(0, x0 + dx), canvas.width - b.w);
+          if (free(x, Math.max(0, home + dy))) { spot = { x, y: Math.max(0, home + dy) }; break; }
+        }
+        if (spot) break;
+      }
     }
-    if (!free(by)) by = home;
-    b.by = Math.max(0, by);
+    if (!spot) continue;
+    b.x = spot.x; b.by = spot.y;
     placed.push(b);
     ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
     ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.by + 1, b.w - 2, 13);

@@ -47,8 +47,8 @@ export const WAYPOINTS = deepFreeze({
     seat_sec: { x: 188, y: 54 }, seat_ux: { x: 204, y: 54 }, seat_ui: { x: 220, y: 54 }, seat_code: { x: 236, y: 54 },
     seat_approver: { x: 30, y: 110 },
     meet_sec: { x: 192, y: 32 }, meet_ux: { x: 207, y: 32 }, meet_ui: { x: 222, y: 32 }, meet_code: { x: 237, y: 32 },
-    lounge_1: { x: 156, y: 104 }, lounge_2: { x: 176, y: 110 }, lounge_3: { x: 196, y: 104 }, lounge_4: { x: 156, y: 124 },
-    lounge_5: { x: 176, y: 130 }, lounge_6: { x: 196, y: 124 }, lounge_7: { x: 156, y: 140 }, lounge_8: { x: 196, y: 140 },
+    lounge_1: { x: 152, y: 104 }, lounge_2: { x: 176, y: 104 }, lounge_3: { x: 200, y: 104 }, lounge_4: { x: 152, y: 126 },
+    lounge_5: { x: 176, y: 126 }, lounge_6: { x: 200, y: 126 }, lounge_7: { x: 164, y: 142 }, lounge_8: { x: 188, y: 142 },
   },
   edges: [
     ['cor_a', 'cor_b'], ['cor_b', 'cor_c'], ['cor_c', 'cor_d'], ['cor_d', 'cor_e'], ['cor_e', 'cor_f'],
