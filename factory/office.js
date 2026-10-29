@@ -20,17 +20,17 @@ const deepFreeze = (v) => {
 const rect = (x, y, w, h) => ({ x, y, w, h });
 
 /** Logical size of the office in sprite pixels. */
-export const MAP = deepFreeze({ width: 256, height: 144 });
+export const MAP = deepFreeze({ width: 256, height: 160 });
 
 /** The seven areas, in display order. `stages` are the board stages each one hosts. */
 export const AREAS = deepFreeze([
   { id: 'research', label: 'Research', stages: ['intake', 'needs-info'], rect: rect(0, 0, 84, 64) },
   { id: 'engineering', label: 'Engineering', stages: ['spec', 'build', 'gate'], rect: rect(84, 0, 88, 64) },
   { id: 'review', label: 'Review', stages: ['review'], rect: rect(172, 0, 84, 64) },
-  { id: 'release', label: 'Release', stages: ['approve', 'merging', 'awaiting-merge'], rect: rect(0, 68, 84, 76) },
-  { id: 'escalation', label: 'Escalation', stages: ['needs-human'], rect: rect(84, 68, 60, 76) },
-  { id: 'archive', label: 'Archive', stages: ['merged', 'rejected'], rect: rect(208, 68, 48, 76) },
-  { id: 'lounge', label: 'Lounge', stages: [], rect: rect(144, 68, 64, 76) },
+  { id: 'release', label: 'Release', stages: ['approve', 'merging', 'awaiting-merge'], rect: rect(0, 68, 84, 92) },
+  { id: 'escalation', label: 'Escalation', stages: ['needs-human'], rect: rect(84, 68, 60, 92) },
+  { id: 'archive', label: 'Archive', stages: ['merged', 'rejected'], rect: rect(208, 68, 48, 92) },
+  { id: 'lounge', label: 'Lounge', stages: [], rect: rect(144, 68, 64, 92) },
 ]);
 
 const REVIEWERS = ['review-security', 'review-ux', 'review-ui', 'review-code'];
@@ -47,8 +47,8 @@ export const WAYPOINTS = deepFreeze({
     seat_sec: { x: 188, y: 54 }, seat_ux: { x: 204, y: 54 }, seat_ui: { x: 220, y: 54 }, seat_code: { x: 236, y: 54 },
     seat_approver: { x: 30, y: 110 },
     meet_sec: { x: 192, y: 32 }, meet_ux: { x: 207, y: 32 }, meet_ui: { x: 222, y: 32 }, meet_code: { x: 237, y: 32 },
-    lounge_1: { x: 152, y: 104 }, lounge_2: { x: 176, y: 104 }, lounge_3: { x: 200, y: 104 }, lounge_4: { x: 152, y: 126 },
-    lounge_5: { x: 176, y: 126 }, lounge_6: { x: 200, y: 126 }, lounge_7: { x: 164, y: 142 }, lounge_8: { x: 188, y: 142 },
+    lounge_1: { x: 152, y: 104 }, lounge_2: { x: 176, y: 104 }, lounge_3: { x: 198, y: 104 }, lounge_4: { x: 152, y: 128 },
+    lounge_5: { x: 176, y: 128 }, lounge_6: { x: 198, y: 128 }, lounge_7: { x: 152, y: 152 }, lounge_8: { x: 176, y: 152 },
   },
   edges: [
     ['cor_a', 'cor_b'], ['cor_b', 'cor_c'], ['cor_c', 'cor_d'], ['cor_d', 'cor_e'], ['cor_e', 'cor_f'],
@@ -99,7 +99,7 @@ export const SPRITES = deepFreeze({
   plant: rect(170, 64, 14, 20),   // potted plant
   terminal: rect(59, 96, 28, 28), // dark glass panel, the Gate terminal
   shelf: rect(184, 126, 24, 31),  // red shelf with bottles, the Archive shelf
-  bin: rect(116, 143, 16, 15),    // green waste bin, the Archive bin
+  bin: rect(116, 143, 10, 15),    // green waste bin, the Archive bin
   sign: rect(84, 70, 26, 20),     // white board, the Escalation sign
 });
 
@@ -126,8 +126,7 @@ export const FURNITURE = deepFreeze([
   { sprite: 'plant', x: 240, y: 36 },
   { sprite: 'desk', x: 17, y: 112 }, { sprite: 'plant', x: 66, y: 90 },
   { sprite: 'sign', x: 100, y: 84 },
-  { sprite: 'sofaBlue', x: 148, y: 90 }, { sprite: 'sofaGreen', x: 148, y: 116 }, { sprite: 'sofaOrange', x: 176, y: 90 },
-  { sprite: 'plant', x: 194, y: 120 },
+  { sprite: 'plant', x: 186, y: 138 },
   { sprite: 'shelf', x: 212, y: 82 }, { sprite: 'bin', x: 238, y: 108 },
 ]);
 

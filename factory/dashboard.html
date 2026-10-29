@@ -93,7 +93,7 @@
   .stat .v { font: 700 13px var(--mono); color: var(--ink); }
 
   /* Agent Office and the reserved Pipeline panel: two equal halves above the kanban. */
-  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; height: clamp(260px, 50vh, 480px);
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; height: clamp(260px, 56vh, 520px);
             padding: 8px 16px 0; }
   .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px; border-radius: 14px;
            background: var(--col); border: 1px solid var(--line); }
@@ -101,6 +101,8 @@
   .office-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
   #office-canvas { display: block; image-rendering: pixelated; }
   #office-hits { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+  .office-stage.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+                       mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .hit { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 1; }
   .hit-token { z-index: 2; }
   .hit-agent { z-index: 3; }
@@ -664,6 +666,9 @@ function renderStats() {
   }
 }
 
+// Short name tags for idle characters in the Lounge (full labels stay in the accessible list).
+const SHORT = { intake: 'Intake', 'spec-writer': 'Spec', builder: 'Build', 'review-security': 'Sec', 'review-ux': 'UX',
+  'review-ui': 'UI', 'review-code': 'Code', approver: 'Appr.' };
 const SPRITE_URL = 'assets/pixel-office/PixelOfficeAssets.png';
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 const SPEED = 48;                       // map pixels per second
@@ -703,6 +708,7 @@ function fitCanvas() {
     canvas.width = MAP.width * scale;
     canvas.height = MAP.height * scale;
   }
+  stage.classList.toggle('more', stage.scrollLeft + stage.clientWidth < stage.scrollWidth - 2);
   hits.style.left = canvas.offsetLeft + 'px';
   hits.style.top = canvas.offsetTop + 'px';
 }
@@ -785,16 +791,24 @@ function drawOffice(now = 0, moving = false) {
   drawText(ctx, 'GATE', (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S - 2, '#ffffff', 'center');
   if (office.gate.result) drawText(ctx, office.gate.result, (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S + 11,
     office.gate.result === 'PASS' ? '#bbf7d0' : '#fecaca', 'center');
-  // Meeting table: the issue under review.
+  // Meeting table and Escalation sign text sit on `--panel` chips, so they read with or without the atlas.
+  const labelChip = (text, cx, cy, tone) => {
+    const tw = ctx.measureText(text).width + 10;
+    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, cy - 7, tw, 15);
+    ctx.strokeStyle = toneColor(tone); ctx.lineWidth = 2; ctx.strokeRect(cx - tw / 2 + 1, cy - 6, tw - 2, 13);
+    ctx.lineWidth = 1;
+    drawText(ctx, text, cx, cy + 4, ink, 'center');
+  };
   if (office.meeting) {
     const t = at('deskLong'), tr = SPRITES.deskLong;
-    drawText(ctx, office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S + 4, '#1f2333', 'center');
+    labelChip(office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S, 'review');
   }
-  // Escalation sign: labels of the jobs that need a human.
   const sign = at('sign'), sr = SPRITES.sign;
   const labels = office.escalation.map((t) => t.label);
-  const shown = labels.length > 3 ? [...labels.slice(0, 2), `+${labels.length - 2}`] : labels;
-  shown.forEach((l, i) => drawText(ctx, l, (sign.x + sr.w / 2) * S, (sign.y + 2) * S + 11 * (i + 1), '#1f2333', 'center'));
+  if (labels.length) {
+    const shown = labels.length > 2 ? [...labels.slice(0, 2), `+${labels.length - 2}`] : labels;
+    labelChip(shown.join(' '), (sign.x + sr.w / 2) * S, (sign.y + sr.h / 2) * S, 'parked');
+  }
   // Archive shelf and bin: merged and rejected counts.
   const shelf = at('shelf'), shr = SPRITES.shelf, bin = at('bin'), br = SPRITES.bin;
   const chip = (text, cx, y, tone) => {
@@ -847,7 +861,7 @@ function drawOffice(now = 0, moving = false) {
     if (atlasOk) ctx.drawImage(atlas, r.x, r.y, r.w, r.h, left, top, r.w * S, r.h * S);
     else { ctx.fillStyle = color; ctx.fillRect(left + 3 * S, top + 4 * S, (r.w - 6) * S, (r.h - 4) * S); }
     nextBoxes.set(`agent:${agent}`, { x: left, y: top, w: r.w * S, h: r.h * S });
-    bubbles.push({ text: st.bubble, color, place: st.place, cx: left + (r.w * S) / 2, y: top });
+    bubbles.push({ agent, text: st.bubble, color, place: st.place, cx: left + (r.w * S) / 2, y: top });
   }
   // Panel-colored tags with ink text (readable in both themes); the role color is the border.
   // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation sign or the
@@ -856,11 +870,25 @@ function drawOffice(now = 0, moving = false) {
   const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
   const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'),
     ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
+    // Faces only: a tag may cover someone's body but never their head.
+    ...[...nextBoxes].filter(([k]) => k.startsWith('agent:')).map(([, box]) => ({ x: box.x, y: box.y, w: box.w, h: Math.round(box.h * 0.4) })),
     ...AREAS.map((a) => ({ x: a.rect.x * S + 2, y: a.rect.y * S + 1, w: ctx.measureText(a.label).width + 6, h: 17 }))];
   const placed = [];
   const busy = (st) => st !== 'lounge';
-  bubbles.sort((p, q) => (busy(p.place) === busy(q.place) ? p.y - q.y : busy(p.place) ? -1 : 1));
+  bubbles.sort((p, q) => (busy(p.place) === busy(q.place) ? p.y - q.y : busy(p.place) ? 1 : -1));
   for (const b of bubbles) {
+    if (b.place === 'lounge') {
+      // Idle: a short tag over the torso, so the face stays visible and each tag stays in its own cell.
+      b.text = SHORT[b.agent];
+      b.w = ctx.measureText(b.text).width + 8;
+      b.x = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w); b.by = b.y + 24;
+      placed.push(b);
+      ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
+      ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.by + 1, b.w - 2, 13);
+      ctx.lineWidth = 1;
+      drawText(ctx, b.text, b.x + b.w / 2, b.by + 11, ink, 'center');
+      continue;
+    }
     b.w = ctx.measureText(b.text).width + 10;
     const free = (x, y) => y >= 0 && y + 15 <= canvas.height && x >= 0 && x + b.w <= canvas.width &&
       !placed.some((o) => !(y + 15 <= o.by || o.by + 15 <= y || x + b.w <= o.x || o.x + o.w <= x)) &&
@@ -868,7 +896,7 @@ function drawOffice(now = 0, moving = false) {
     const home = b.y - 18, x0 = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w);
     const shift = b.w / 2 + 24;
     let spot = null;
-    for (let d = 0; d <= 48 && !spot; d += 4) {
+    for (let d = 0; d <= 72 && !spot; d += 4) {
       for (const dy of d ? [-d, d] : [0]) {
         for (const dx of [0, -shift, shift]) {
           const x = Math.min(Math.max(0, x0 + dx), canvas.width - b.w);
@@ -940,6 +968,7 @@ hits.addEventListener('click', (e) => {
   const btn = e.target.closest('.hit');
   if (btn) openDrawer(btn.dataset.id);
 });
+$('office-stage').addEventListener('scroll', () => drawOffice());
 if (typeof ResizeObserver === 'function') new ResizeObserver(() => drawOffice()).observe($('office-stage'));
 else window.addEventListener('resize', () => drawOffice());
 new MutationObserver(() => { toneCache = null; drawOffice(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
