@@ -160,3 +160,33 @@ export function costTimeHtml(job, now = Date.now()) {
   return `<span class="cost" title="cost">${esc(cost)}</span>` +
     `<span class="time" title="time">${esc(formatDuration(end - start))}</span>`;
 }
+
+const recency = (job) => {
+  for (const key of ['finished', 'updated']) {
+    const t = Date.parse(job?.[key]);
+    if (!Number.isNaN(t)) return t;
+  }
+  return -Infinity;
+};
+
+/** Newest-first split of merged jobs: the first `keep` are `recent`, the rest `older`. Never throws. */
+export function splitMerged(jobs, keep = 3) {
+  if (!Array.isArray(jobs)) return { recent: [], older: [] };
+  const n = Number.isInteger(keep) && keep >= 0 ? keep : 3;
+  const sorted = jobs
+    .map((job, i) => ({ job, i, t: recency(job) }))
+    .sort((a, b) => (a.t === b.t ? a.i - b.i : a.t > b.t ? -1 : 1))
+    .map((e) => e.job);
+  return { recent: sorted.slice(0, n), older: sorted.slice(n) };
+}
+
+/** Collapsed "+N older" group of one-line rows that open the drawer. Every value is escaped. */
+export function olderMergedHtml(jobs, label, open) {
+  if (!Array.isArray(jobs) || !jobs.length) return '';
+  const rows = jobs.map((j) => {
+    const title = esc(j?.title || j?.id);
+    return `<li><button type="button" class="row" data-id="${esc(j?.id)}" title="${title}">` +
+      `<span class="id">${esc(j?.id)}</span> <span class="row-title">${title}</span></button></li>`;
+  }).join('');
+  return `<details class="older"${open ? ' open' : ''}><summary>${esc(label)}</summary><ul class="rows">${rows}</ul></details>`;
+}

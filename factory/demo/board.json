@@ -38,6 +38,146 @@
       "updated": "2026-10-27T09:41:00Z"
     },
     {
+      "id": "012-readme-badges",
+      "issue": 21,
+      "title": "README badges",
+      "pr": 23,
+      "branch": "factory/012-readme-badges",
+      "worktree": "/home/demo/app/.worktrees/012-readme-badges",
+      "port": 3012,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #23",
+      "cost_usd": 0.4,
+      "started": "2026-10-27T10:05:00Z",
+      "finished": "2026-10-27T10:20:00Z",
+      "updated": "2026-10-27T10:20:00Z"
+    },
+    {
+      "id": "013-error-pages",
+      "issue": 22,
+      "title": "Friendly error pages",
+      "pr": 24,
+      "branch": "factory/013-error-pages",
+      "worktree": "/home/demo/app/.worktrees/013-error-pages",
+      "port": 3013,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #24",
+      "cost_usd": 0.51,
+      "started": "2026-10-27T11:00:00Z",
+      "finished": "2026-10-27T11:30:00Z",
+      "updated": "2026-10-27T11:30:00Z"
+    },
+    {
+      "id": "014-cache-headers",
+      "issue": 23,
+      "title": "Cache headers for static files",
+      "pr": 25,
+      "branch": "factory/014-cache-headers",
+      "worktree": "/home/demo/app/.worktrees/014-cache-headers",
+      "port": 3014,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #25",
+      "cost_usd": 0.62,
+      "started": "2026-10-27T12:10:00Z",
+      "finished": "2026-10-27T12:45:00Z",
+      "updated": "2026-10-27T12:45:00Z"
+    },
+    {
+      "id": "015-sitemap",
+      "issue": 24,
+      "title": "Sitemap route",
+      "pr": 26,
+      "branch": "factory/015-sitemap",
+      "worktree": "/home/demo/app/.worktrees/015-sitemap",
+      "port": 3015,
+      "stage": "merged",
+      "round": 1,
+      "max_rounds": 3,
+      "intake": {
+        "decision": "ACCEPT",
+        "rescoped": false,
+        "risk": "low",
+        "surfaces": []
+      },
+      "agents": {
+        "builder": "sonnet",
+        "reviewers": {
+          "code": "haiku"
+        }
+      },
+      "gate": "PASS",
+      "reviews": {
+        "code": "PASS"
+      },
+      "history": [],
+      "decision": "APPROVE",
+      "note": "merged PR #26",
+      "cost_usd": 0.73,
+      "started": "2026-10-27T13:20:00Z",
+      "finished": "2026-10-27T13:55:00Z",
+      "updated": "2026-10-27T13:55:00Z"
+    },
+    {
       "id": "002-csv-export",
       "issue": 4,
       "title": "CSV export",
