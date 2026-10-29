@@ -98,7 +98,7 @@
   .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px; border-radius: 14px;
            background: var(--col); border: 1px solid var(--line); }
   .panel h2 { margin: 0 0 6px; flex: none; font-size: 14px; font-weight: 700; color: var(--ink); }
-  .office-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .office-stage { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
   #office-canvas { display: block; image-rendering: pixelated; }
   #office-hits { position: absolute; left: 0; top: 0; width: 0; height: 0; }
   .office-stage.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
@@ -380,8 +380,8 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import {
-  AREAS, CHARACTER_FOR, FURNITURE, MAP, SPRITES, WAYPOINTS, areaTone, describeOffice, formatCost, headerStats,
-  hitTargets, officeState, route,
+  CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats,
+  hitTargets, layoutOffice, officeState, remapWalker, route,
 } from './office.js';
 import { AVATARS } from './avatars.js';
 
@@ -673,7 +673,7 @@ const SPRITE_URL = 'assets/pixel-office/PixelOfficeAssets.png';
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 const SPEED = 48;                       // map pixels per second
 const atlas = new Image();
-let atlasOk = false, office = null, officeKey = '', liveKey = '', scale = 1, raf = 0, last = 0;
+let atlasOk = false, office = null, officeKey = '', liveKey = '', layout = null, layoutKey = '', raf = 0, last = 0;
 const walkers = new Map();              // agent -> { x, y, node, queue }
 let boxes = new Map();                  // "kind:key" -> screen-pixel box, for hotspots
 atlas.onload = () => { atlasOk = true; drawOffice(); };
@@ -701,12 +701,17 @@ const hits = $('office-hits');
 function fitCanvas() {
   const stage = $('office-stage'), canvas = $('office-canvas');
   const stacked = window.matchMedia('(max-width: 900px)').matches;
-  const next = stacked ? Math.max(2, Math.floor(stage.clientWidth / MAP.width))
-    : Math.max(1, Math.floor(Math.min(stage.clientWidth / MAP.width, stage.clientHeight / MAP.height)));
-  scale = next;
-  if (canvas.width !== MAP.width * scale || canvas.height !== MAP.height * scale) {
-    canvas.width = MAP.width * scale;
-    canvas.height = MAP.height * scale;
+  const key = `${stage.clientWidth}x${stage.clientHeight}:${stacked}`;
+  if (!layout || key !== layoutKey) {
+    const next = layoutOffice(stage.clientWidth, stacked ? 0 : stage.clientHeight, { minScale: stacked ? 2 : 1 });
+    if (layout) for (const w of walkers.values()) Object.assign(w, remapWalker(w, layout, next));
+    layout = next;
+    layoutKey = key;
+  }
+  const cw = layout.map.width * layout.scale, ch = layout.map.height * layout.scale;
+  if (canvas.width !== cw || canvas.height !== ch) {
+    canvas.width = cw;
+    canvas.height = ch;
   }
   stage.classList.toggle('more', stage.scrollLeft + stage.clientWidth < stage.scrollWidth - 2);
   hits.style.left = canvas.offsetLeft + 'px';
@@ -716,7 +721,7 @@ function fitCanvas() {
 function syncWalkers() {
   for (const [agent, a] of Object.entries(office.agents)) {
     let w = walkers.get(agent);
-    const at = WAYPOINTS.nodes[a.node];
+    const at = layout.nodes[a.node];
     if (!w) { w = { x: at.x, y: at.y, node: a.node, queue: [], target: a.node }; walkers.set(agent, w); }
     if (w.target !== a.node) {
       w.target = a.node;
@@ -734,7 +739,7 @@ function step(now) {
   for (const w of walkers.values()) {
     let budget = SPEED * dt;
     while (w.queue.length && budget > 0) {
-      const to = WAYPOINTS.nodes[w.queue[0]];
+      const to = layout.nodes[w.queue[0]];
       const dx = to.x - w.x, dy = to.y - w.y, d = Math.hypot(dx, dy);
       if (d <= budget) { w.x = to.x; w.y = to.y; w.node = w.queue.shift(); budget -= d; }
       else { w.x += (dx / d) * budget; w.y += (dy / d) * budget; budget = 0; }
@@ -759,8 +764,9 @@ function drawOffice(now = 0, moving = false) {
   const canvas = $('office-canvas');
   if (!office) return;
   fitCanvas();
+  const { areas: AREAS, furniture: FURNITURE } = layout;
   const ctx = canvas.getContext('2d');
-  const S = scale, ink = cssVar('--ink'), line = cssVar('--line'), muted = cssVar('--muted');
+  const S = layout.scale, ink = cssVar('--ink'), line = cssVar('--line'), muted = cssVar('--muted');
   ctx.imageSmoothingEnabled = false;
   ctx.textBaseline = 'alphabetic';
   ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
@@ -788,9 +794,6 @@ function drawOffice(now = 0, moving = false) {
   ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
   ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
   ctx.globalAlpha = 1;
-  drawText(ctx, 'GATE', (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S - 2, '#ffffff', 'center');
-  if (office.gate.result) drawText(ctx, office.gate.result, (gate.x + gr.w / 2) * S, (gate.y + gr.h / 2) * S + 11,
-    office.gate.result === 'PASS' ? '#bbf7d0' : '#fecaca', 'center');
   // Meeting table and Escalation sign text sit on `--panel` chips, so they read with or without the atlas.
   const labelChip = (text, cx, cy, tone) => {
     const tw = ctx.measureText(text).width + 10;
@@ -799,6 +802,20 @@ function drawOffice(now = 0, moving = false) {
     ctx.lineWidth = 1;
     drawText(ctx, text, cx, cy + 4, ink, 'center');
   };
+  // Gate terminal text: each line sits on its own opaque `--panel` chip with `--ink` text (AA in both themes, with or
+  // without the atlas); the verdict colour is the chip border. The chips are centered on the sprite and are obstacles.
+  const gateJob = (board.jobs || []).find((j) => j && j.stage === 'gate' && Number.isInteger(j.issue) && j.issue > 0);
+  const verdict = office.gate.result || (office.gate.lit ? 'running' : 'idle');
+  const gateLines = [['GATE', 'muted'], ...(gateJob ? [[`#${gateJob.issue}`, 'active']] : []),
+    [verdict, verdict === 'PASS' ? 'done' : verdict === 'FAIL' ? 'parked' : verdict === 'running' ? 'active' : 'muted']];
+  const gateChips = [];
+  const gcx = (gate.x + gr.w / 2) * S, gtop = (gate.y + gr.h / 2) * S - (gateLines.length * 16 - 1) / 2;
+  gateLines.forEach(([text, tone], n) => {
+    const cy = Math.round(gtop + n * 16 + 7);
+    labelChip(text, gcx, cy, tone);
+    const tw = ctx.measureText(text).width + 10;
+    gateChips.push({ x: gcx - tw / 2, y: cy - 7, w: tw, h: 15 });
+  });
   if (office.meeting) {
     const t = at('deskLong'), tr = SPRITES.deskLong;
     labelChip(office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S, 'review');
@@ -818,8 +835,12 @@ function drawOffice(now = 0, moving = false) {
     ctx.lineWidth = 1;
     drawText(ctx, text, cx, y + 11, ink, 'center');
   };
-  chip(`✓${office.archive.merged}`, (shelf.x + shr.w / 2) * S, (shelf.y + shr.h) * S + 2, 'done');
-  chip(`✗${office.archive.rejected}`, (bin.x + br.w / 2) * S, (bin.y + br.h) * S + 2, 'muted');
+  const archiveChips = [];
+  for (const [text, f, r, tone] of [[`✓${office.archive.merged}`, shelf, shr, 'done'], [`✗${office.archive.rejected}`, bin, br, 'muted']]) {
+    const cx = (f.x + r.w / 2) * S, y = (f.y + r.h) * S + 2, tw = ctx.measureText(text).width + 10;
+    chip(text, cx, y, tone);
+    archiveChips.push({ x: cx - tw / 2, y, w: tw, h: 15 });
+  }
   // Job folders per area.
   for (const area of AREAS) {
     const list = area.id === 'escalation' ? [] : office.tokens[area.id] || [];
@@ -868,7 +889,7 @@ function drawOffice(now = 0, moving = false) {
   // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
   // character; with no free slot the tag is omitted (the accessible list still names every agent).
   const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
-  const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'),
+  const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'), spr('shelf'), spr('bin'), ...archiveChips, ...gateChips,
     ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
     // Faces only: a tag may cover someone's body but never their head.
     ...[...nextBoxes].filter(([k]) => k.startsWith('agent:')).map(([, box]) => ({ x: box.x, y: box.y, w: box.w, h: Math.round(box.h * 0.4) })),
@@ -929,6 +950,7 @@ function placeHits() {
 
 function renderOffice() {
   office = officeState(board.jobs);
+  fitCanvas();
   const targets = hitTargets(office, board.jobs);
   const key = JSON.stringify(targets);
   if (key !== officeKey) {

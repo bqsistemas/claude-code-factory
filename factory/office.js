@@ -130,6 +130,7 @@ export const FURNITURE = deepFreeze([
   { sprite: 'shelf', x: 212, y: 82 }, { sprite: 'bin', x: 238, y: 108 },
 ]);
 
+const inside = (r, p) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
 const isObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 const positiveInt = (n) => Number.isInteger(n) && n > 0;
 const AREA_BY_ID = new Map(AREAS.map((a) => [a.id, a]));
@@ -137,6 +138,64 @@ const AREA_OF_STAGE = new Map(AREAS.flatMap((a) => a.stages.map((s) => [s, a.id]
 const KNOWN_STAGES = new Set(STAGE_COLUMNS.map(([s]) => s));
 const RUNNING_STAGES = new Set(['intake', 'needs-info', 'spec', 'build', 'gate', 'review', 'approve', 'merging']);
 const TOKEN_AREAS = ['research', 'engineering', 'review', 'release'];
+
+const num = (n) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : 0);
+
+// Corridor bounds of the base layout: the top row ends where the corridor begins.
+const TOP_ROW_END = AREAS[0].rect.y + AREAS[0].rect.h;
+const BOTTOM_ROW_START = Math.min(...AREAS.filter((a) => a.rect.y > 0).map((a) => a.rect.y));
+
+/**
+ * Derive the office layout for a stage of `width` x `height` CSS px (height <= 0 means free height, used when
+ * stacked). Integer scale, map size in map pixels, and the areas, nodes and furniture grown to fill the map.
+ * Pure; never throws.
+ */
+export function layoutOffice(width, height, opts) {
+  const w = num(width), h = num(height);
+  const ms = opts && Number.isInteger(opts.minScale) && opts.minScale >= 1 ? opts.minScale : 1;
+  const scale = Math.max(ms, Math.floor(Math.min(w / MAP.width, h > 0 ? h / MAP.height : Infinity)));
+  const mw = Math.max(MAP.width, Math.floor(w / scale));
+  const mh = h > 0 ? Math.max(MAP.height, Math.floor(h / scale)) : MAP.height;
+  const col = (b) => Math.round((b * mw) / MAP.width);
+  const row = (b) => Math.round((b * mh) / MAP.height);
+  const areas = AREAS.map((a) => {
+    const x0 = col(a.rect.x), x1 = col(a.rect.x + a.rect.w), y0 = row(a.rect.y), y1 = row(a.rect.y + a.rect.h);
+    return { id: a.id, label: a.label, stages: [...a.stages], rect: rect(x0, y0, x1 - x0, y1 - y0) };
+  });
+  const rectOf = (base) => areas[AREAS.indexOf(base)].rect;
+  const corridorY = row(TOP_ROW_END) + Math.floor((row(BOTTOM_ROW_START) - row(TOP_ROW_END)) / 2);
+  const nodes = {};
+  for (const [name, p] of Object.entries(WAYPOINTS.nodes)) {
+    const base = AREAS.find((a) => inside(a.rect, p));
+    if (!base) { nodes[name] = { x: Math.floor((p.x * mw) / MAP.width), y: corridorY }; continue; }
+    const r = rectOf(base);
+    nodes[name] = {
+      x: r.x + Math.floor(((p.x - base.rect.x) * r.w) / base.rect.w),
+      y: r.y + Math.floor(((p.y - base.rect.y) * r.h) / base.rect.h),
+    };
+  }
+  const furniture = FURNITURE.map((f) => {
+    const sp = SPRITES[f.sprite];
+    const base = AREAS.find((a) => inside(a.rect, { x: f.x + sp.w / 2, y: f.y + sp.h / 2 })) ?? AREAS[0];
+    const r = rectOf(base), b = base.rect;
+    const place = (v, size, bo, bs, ro, rs) => Math.floor((2 * ro * bs + (2 * v + size - 2 * bo) * rs - size * bs) / (2 * bs));
+    const x = place(f.x, sp.w, b.x, b.w, r.x, r.w), y = place(f.y, sp.h, b.y, b.h, r.y, r.h);
+    return { sprite: f.sprite, x: Math.min(Math.max(0, x), mw - sp.w), y: Math.min(Math.max(0, y), mh - sp.h) };
+  });
+  return { scale, map: { width: mw, height: mh }, areas, nodes, furniture };
+}
+
+/** Position a walker should have after a re-layout: its node when still, a proportional point when walking. */
+export function remapWalker(walker, from, to) {
+  const node = isObject(walker) && isObject(to?.nodes) && typeof walker.node === 'string' && isObject(to.nodes[walker.node]) ? to.nodes[walker.node] : null;
+  const fallback = node ? { x: node.x, y: node.y } : { x: 0, y: 0 };
+  if (!isObject(walker) || !isObject(from?.map) || !isObject(to?.map)) return fallback;
+  if (!Array.isArray(walker.queue) || !walker.queue.length) return fallback;
+  const { x, y } = walker;
+  if (![x, y, from.map.width, from.map.height, to.map.width, to.map.height].every(Number.isFinite) || from.map.width <= 0 || from.map.height <= 0) return fallback;
+  const clamp = (v, max) => Math.min(Math.max(0, v), max);
+  return { x: clamp((x * to.map.width) / from.map.width, to.map.width), y: clamp((y * to.map.height) / from.map.height, to.map.height) };
+}
 
 /** Area id for a board stage; unknown or non-string stages go to 'research'. */
 export function areaForStage(stage) {
@@ -260,8 +319,6 @@ export function officeState(jobs) {
   }
   return { agents, meeting, tokens, escalation, archive, gate: gateState(prepared) };
 }
-
-const inside = (r, p) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
 
 function gateState(prepared) {
   const lit = prepared.some((p) => p.stage === 'gate');

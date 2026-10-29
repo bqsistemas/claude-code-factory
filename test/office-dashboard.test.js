@@ -38,3 +38,10 @@ test('AC-8: the CC0 atlas is vendored and referenced by relative path only', asy
   assert.ok(refs.length >= 1);
   for (const r of refs) assert.equal(r, 'assets/pixel-office/PixelOfficeAssets.png');
 });
+
+test('AC-6: the dashboard draws from layoutOffice instead of the fixed map size', () => {
+  assert.match(script, /import \{[^}]*\blayoutOffice\b[^}]*\bremapWalker\b[^}]*\} from '\.\/office\.js'|import \{[^}]*\bremapWalker\b[^}]*\blayoutOffice\b[^}]*\} from '\.\/office\.js'/);
+  assert.match(script, /new ResizeObserver\(.*\)\.observe\(\$\('office-stage'\)\)/);
+  assert.doesNotMatch(script, /MAP\.(width|height)/);
+  assert.match(css, /#office-canvas\s*\{[^}]*image-rendering:\s*pixelated/);
+});
