@@ -142,8 +142,9 @@
          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row:hover { background: var(--chip-bg); }
   .row .id { flex: none; color: var(--muted); }
-  .row .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .row-meta { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; white-space: nowrap; }
+  .row .row-title { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .row { flex-wrap: wrap; }
+  .row-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 6px; margin-left: auto; flex: 0 1 auto; min-width: 0; max-width: 100%; }
   .row-meta .n { color: var(--muted); font-weight: 600; }
   .row-meta .when { color: var(--muted); }
   @container (max-width: 420px) { .row-meta { display: none; } }
@@ -202,7 +203,7 @@
   .verdict.bad  { background: var(--alert-bg); color: var(--alert); }
   .drawer-summary { flex: none; padding: 10px 22px; border-bottom: 1px solid var(--line); max-height: 40%; overflow-y: auto; }
   .drawer-summary .card-top, .drawer-summary .links { display: none; }
-  .drawer-summary .card { cursor: default; }
+  .drawer-summary .card { cursor: default; opacity: 1; }
   .drawer-summary .card:hover { border-color: var(--line); transform: none; }
   .drawer-links { margin-top: 4px; }
   .missing-doc { color: var(--muted); font-style: italic; }

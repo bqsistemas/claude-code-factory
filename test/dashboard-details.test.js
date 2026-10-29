@@ -12,6 +12,7 @@ test('AC-1: ago formats seconds, minutes, hours, days and rejects junk', () => {
   assert.equal(ago(iso, T0 + 5 * 60e3), '5m ago');
   assert.equal(ago(iso, T0 + 3 * 3600e3), '3h ago');
   assert.equal(ago(iso, T0 + 2 * 86400e3), '2d ago');
+  assert.equal(ago(iso, T0 - 5e3), '0s ago');
   for (const bad of [undefined, '', 'junk']) assert.equal(ago(bad, T0), '');
 });
 
@@ -36,7 +37,6 @@ test('AC-3: older rows carry escaped, aria-hidden meta details', () => {
   const out = olderMergedHtml([job], 'l', false, now);
   const last = job.history[1];
   assert.ok(out.includes('<span class="row-title">T</span><span class="row-meta" aria-hidden="true">'));
-  assert.ok(out.includes('<span class="row-meta" aria-hidden="true">'));
   assert.ok(out.includes('<span class="n">R2</span>' + roundChipsHtml(last)));
   assert.ok(out.includes(`<span class="cost-time">${costTimeHtml(job, now)}</span>`));
   assert.ok(out.includes(`<span class="when">${ago(job.updated, now)}</span>`));
@@ -67,5 +67,7 @@ test('AC-5: CSS hides redundant summary parts and collapses row meta by containe
   assert.match(html, /\.drawer-summary \{[^}]*overflow-y: auto/);
   assert.match(html, /\.older\s*\{[^}]*container-type: inline-size/);
   assert.match(html, /\.row-meta\s*\{[^}]*margin-left: auto/);
+  assert.match(html, /\.row-meta\s*\{[^}]*flex-wrap: wrap/);
+  assert.match(html, /\.drawer-summary \.card\s*\{[^}]*opacity: 1/);
   assert.match(html, /@container \(max-width: \d+px\)\s*\{\s*\.row-meta\s*\{\s*display: none;/);
 });
