@@ -790,6 +790,8 @@ function drawOffice(now = 0, moving = false) {
   const at = (name) => FURNITURE.find((f) => f.sprite === name);
   // Gate terminal: lit while a job is in gate, with the latest verdict.
   const gate = at('terminal'), gr = SPRITES.terminal;
+  // Without the atlas there is no dark glass panel, so back the terminal with one: white text stays AA in both themes.
+  if (!atlasOk) { ctx.fillStyle = '#0f172a'; ctx.fillRect(gate.x * S, gate.y * S, gr.w * S, gr.h * S); }
   ctx.globalAlpha = office.gate.lit ? 0.55 : 0.25;
   ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
   ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
