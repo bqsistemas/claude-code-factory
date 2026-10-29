@@ -306,10 +306,9 @@ describe('job 020: language', { concurrency: true }, () => {
     assert.deepEqual(Object.keys(dict), ['en', 'es', 'pt']);
     const shape = (o) => Object.keys(o).sort().map((k) => (typeof o[k] === 'object' ? `${k}:${shape(o[k])}` : k)).join(',');
     for (const l of ['es', 'pt']) assert.equal(shape(dict[l]), shape(dict.en));
-    const stages = ['intake', 'needs-info', 'spec', 'build', 'gate', 'review', 'approve', 'merging', 'awaiting-merge', 'needs-human', 'merged', 'rejected'];
     const walk = (v) => (typeof v === 'object' ? Object.values(v).flatMap(walk) : [v]);
     for (const l of LANGUAGES) {
-      for (const s of stages) assert.ok(dict[l].columns[s]?.trim(), `${l} column ${s}`);
+      assert.ok(!('columns' in dict[l]), `${l} has no columns map`);
       for (const v of walk(dict[l])) assert.ok(typeof v === 'string' && v.trim());
     }
     assert.equal(dict.en.hintNeedsHumanPr, 'merge the PR to approve, or rework it:');
