@@ -98,7 +98,7 @@
   .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px; border-radius: 14px;
            background: var(--col); border: 1px solid var(--line); }
   .panel h2 { margin: 0 0 6px; flex: none; font-size: 14px; font-weight: 700; color: var(--ink); }
-  .office-stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  .office-stage { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
   #office-canvas { display: block; image-rendering: pixelated; }
   #office-hits { position: absolute; left: 0; top: 0; width: 0; height: 0; }
   .office-stage.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
@@ -380,8 +380,8 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import {
-  AREAS, CHARACTER_FOR, FURNITURE, MAP, SPRITES, WAYPOINTS, areaTone, describeOffice, formatCost, headerStats,
-  hitTargets, officeState, route,
+  CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats,
+  hitTargets, layoutOffice, officeState, remapWalker, route,
 } from './office.js';
 import { AVATARS } from './avatars.js';
 
@@ -673,7 +673,7 @@ const SPRITE_URL = 'assets/pixel-office/PixelOfficeAssets.png';
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
 const SPEED = 48;                       // map pixels per second
 const atlas = new Image();
-let atlasOk = false, office = null, officeKey = '', liveKey = '', scale = 1, raf = 0, last = 0;
+let atlasOk = false, office = null, officeKey = '', liveKey = '', layout = null, layoutKey = '', raf = 0, last = 0;
 const walkers = new Map();              // agent -> { x, y, node, queue }
 let boxes = new Map();                  // "kind:key" -> screen-pixel box, for hotspots
 atlas.onload = () => { atlasOk = true; drawOffice(); };
@@ -701,12 +701,17 @@ const hits = $('office-hits');
 function fitCanvas() {
   const stage = $('office-stage'), canvas = $('office-canvas');
   const stacked = window.matchMedia('(max-width: 900px)').matches;
-  const next = stacked ? Math.max(2, Math.floor(stage.clientWidth / MAP.width))
-    : Math.max(1, Math.floor(Math.min(stage.clientWidth / MAP.width, stage.clientHeight / MAP.height)));
-  scale = next;
-  if (canvas.width !== MAP.width * scale || canvas.height !== MAP.height * scale) {
-    canvas.width = MAP.width * scale;
-    canvas.height = MAP.height * scale;
+  const key = `${stage.clientWidth}x${stage.clientHeight}:${stacked}`;
+  if (!layout || key !== layoutKey) {
+    const next = layoutOffice(stage.clientWidth, stacked ? 0 : stage.clientHeight, { minScale: stacked ? 2 : 1 });
+    if (layout) for (const w of walkers.values()) Object.assign(w, remapWalker(w, layout, next));
+    layout = next;
+    layoutKey = key;
+  }
+  const cw = layout.map.width * layout.scale, ch = layout.map.height * layout.scale;
+  if (canvas.width !== cw || canvas.height !== ch) {
+    canvas.width = cw;
+    canvas.height = ch;
   }
   stage.classList.toggle('more', stage.scrollLeft + stage.clientWidth < stage.scrollWidth - 2);
   hits.style.left = canvas.offsetLeft + 'px';
@@ -716,7 +721,7 @@ function fitCanvas() {
 function syncWalkers() {
   for (const [agent, a] of Object.entries(office.agents)) {
     let w = walkers.get(agent);
-    const at = WAYPOINTS.nodes[a.node];
+    const at = layout.nodes[a.node];
     if (!w) { w = { x: at.x, y: at.y, node: a.node, queue: [], target: a.node }; walkers.set(agent, w); }
     if (w.target !== a.node) {
       w.target = a.node;
@@ -734,7 +739,7 @@ function step(now) {
   for (const w of walkers.values()) {
     let budget = SPEED * dt;
     while (w.queue.length && budget > 0) {
-      const to = WAYPOINTS.nodes[w.queue[0]];
+      const to = layout.nodes[w.queue[0]];
       const dx = to.x - w.x, dy = to.y - w.y, d = Math.hypot(dx, dy);
       if (d <= budget) { w.x = to.x; w.y = to.y; w.node = w.queue.shift(); budget -= d; }
       else { w.x += (dx / d) * budget; w.y += (dy / d) * budget; budget = 0; }
@@ -759,8 +764,9 @@ function drawOffice(now = 0, moving = false) {
   const canvas = $('office-canvas');
   if (!office) return;
   fitCanvas();
+  const { areas: AREAS, furniture: FURNITURE } = layout;
   const ctx = canvas.getContext('2d');
-  const S = scale, ink = cssVar('--ink'), line = cssVar('--line'), muted = cssVar('--muted');
+  const S = layout.scale, ink = cssVar('--ink'), line = cssVar('--line'), muted = cssVar('--muted');
   ctx.imageSmoothingEnabled = false;
   ctx.textBaseline = 'alphabetic';
   ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
@@ -929,6 +935,7 @@ function placeHits() {
 
 function renderOffice() {
   office = officeState(board.jobs);
+  fitCanvas();
   const targets = hitTargets(office, board.jobs);
   const key = JSON.stringify(targets);
   if (key !== officeKey) {

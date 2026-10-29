@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone } from '../factory/activity.js';
 import { AVATARS } from '../factory/avatars.js';
 import {
-  AREAS, CHARACTER_FOR, LOUNGE_SPOTS, MAP, MEETING_SEATS, SEATS, SPRITES, WAYPOINTS,
-  areaForStage, areaTone, bubbleText, describeOffice, formatCost, headerStats, hitTargets, officeState, route,
+  AREAS, CHARACTER_FOR, FURNITURE, LOUNGE_SPOTS, MAP, MEETING_SEATS, SEATS, SPRITES, WAYPOINTS,
+  areaForStage, areaTone, bubbleText, describeOffice, formatCost, headerStats, hitTargets, layoutOffice, officeState, remapWalker, route,
 } from '../factory/office.js';
 
 const job = (id, stage, extra = {}) => ({ id, stage, issue: Number(id.replace(/\D/g, '')) || undefined, started: '2026-01-01T00:00:00Z', ...extra });
@@ -139,4 +139,111 @@ test('AC-6: hit targets and the accessible description', () => {
   assert.equal(bubbleText('nobody', []), '');
   assert.deepEqual(hitTargets(null, null), []);
   assert.deepEqual(describeOffice(null), []);
+});
+
+// ---- Layout (job 025) ----
+const SIZES = [[256, 160], [602, 370], [940, 480], [1400, 500], [300, 900]];
+const inRect = (r, p) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
+const areaOfBase = (p) => AREAS.find((a) => inRect(a.rect, p));
+
+test('AC-1: layoutOffice picks the largest integer scale and fills each axis within one scale step', () => {
+  for (let w = 256; w <= 2000; w += 37) {
+    for (let h = 160; h <= 1200; h += 29) {
+      const l = layoutOffice(w, h);
+      assert.equal(l.scale, Math.floor(Math.min(w / 256, h / 160)));
+      assert.ok(l.map.width * l.scale <= w && w - l.map.width * l.scale < l.scale, `${w}x${h} width`);
+      assert.ok(l.map.height * l.scale <= h && h - l.map.height * l.scale < l.scale, `${w}x${h} height`);
+    }
+  }
+  for (const bad of [NaN, 'a', -5, undefined, 100]) {
+    const l = layoutOffice(bad, bad);
+    assert.equal(l.scale, 1);
+    assert.deepEqual(l.map, { width: 256, height: 160 });
+  }
+  assert.equal(layoutOffice('x', -1, { minScale: 3 }).scale, 3);
+  assert.equal(layoutOffice(10, 10, { minScale: 1.5 }).scale, 1);
+});
+
+test('AC-2: areas tile the map, keep order and never shrink', () => {
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h);
+    assert.equal(l.areas.length, 7);
+    l.areas.forEach((a, i) => {
+      const b = AREAS[i];
+      assert.equal(a.id, b.id); assert.equal(a.label, b.label); assert.deepEqual(a.stages, b.stages);
+      for (const v of Object.values(a.rect)) assert.ok(Number.isInteger(v));
+      assert.ok(a.rect.w >= b.rect.w && a.rect.h >= b.rect.h);
+      assert.ok(a.rect.x >= 0 && a.rect.y >= 0 && a.rect.x + a.rect.w <= l.map.width && a.rect.y + a.rect.h <= l.map.height);
+      l.areas.slice(i + 1).forEach((o) => {
+        const hit = !(a.rect.x + a.rect.w <= o.rect.x || o.rect.x + o.rect.w <= a.rect.x || a.rect.y + a.rect.h <= o.rect.y || o.rect.y + o.rect.h <= a.rect.y);
+        assert.ok(!hit, `${a.id}/${o.id} overlap at ${w}x${h}`);
+      });
+    });
+    const r = (id) => l.areas.find((a) => a.id === id).rect;
+    const order = (ids, key) => ids.every((id, i) => i === 0 || r(ids[i - 1])[key] < r(id)[key]);
+    assert.ok(order(['research', 'engineering', 'review'], 'x') && order(['release', 'escalation', 'lounge', 'archive'], 'x'));
+    assert.ok(r('research').y === 0 && r('release').y > r('research').y);
+    assert.equal(Math.min(...l.areas.map((a) => a.rect.x)), 0);
+    assert.equal(Math.min(...l.areas.map((a) => a.rect.y)), 0);
+    assert.equal(Math.max(...l.areas.map((a) => a.rect.x + a.rect.w)), l.map.width);
+    assert.equal(Math.max(...l.areas.map((a) => a.rect.y + a.rect.h)), l.map.height);
+  }
+});
+
+test('AC-3: nodes and furniture stay in their base area and routes stay on the graph', () => {
+  const edges = new Set(WAYPOINTS.edges.flatMap(([a, b]) => [`${a}|${b}`, `${b}|${a}`]));
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h);
+    const rectOf = (id) => l.areas.find((a) => a.id === id).rect;
+    assert.deepEqual(Object.keys(l.nodes), Object.keys(WAYPOINTS.nodes));
+    for (const [name, p] of Object.entries(WAYPOINTS.nodes)) {
+      assert.ok(Number.isInteger(l.nodes[name].x) && Number.isInteger(l.nodes[name].y));
+      const base = areaOfBase(p);
+      if (base) assert.ok(inRect(rectOf(base.id), l.nodes[name]), `${name} at ${w}x${h}`);
+    }
+    assert.equal(l.furniture.length, FURNITURE.length);
+    l.furniture.forEach((f, i) => {
+      const spr = SPRITES[f.sprite], b = FURNITURE[i];
+      assert.equal(f.sprite, b.sprite);
+      assert.ok(Number.isInteger(f.x) && Number.isInteger(f.y));
+      assert.ok(f.x >= 0 && f.y >= 0 && f.x + spr.w <= l.map.width && f.y + spr.h <= l.map.height);
+      const base = areaOfBase({ x: b.x + spr.w / 2, y: b.y + spr.h / 2 });
+      assert.ok(inRect(rectOf(base.id), { x: f.x + spr.w / 2, y: f.y + spr.h / 2 }), `${f.sprite} ${i} at ${w}x${h}`);
+    });
+    const names = Object.keys(l.nodes);
+    for (const a of names) for (const b of names) {
+      const path = route(a, b);
+      assert.ok(path.length >= 1);
+      for (let i = 1; i < path.length; i++) assert.ok(edges.has(`${path[i - 1]}|${path[i]}`));
+    }
+  }
+});
+
+test('AC-4: lounge spots never get closer than in the base layout', () => {
+  const spots = Object.values(LOUNGE_SPOTS);
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h);
+    for (const a of spots) for (const b of spots) {
+      assert.ok(Math.abs(l.nodes[a].x - l.nodes[b].x) >= Math.abs(WAYPOINTS.nodes[a].x - WAYPOINTS.nodes[b].x));
+      assert.ok(Math.abs(l.nodes[a].y - l.nodes[b].y) >= Math.abs(WAYPOINTS.nodes[a].y - WAYPOINTS.nodes[b].y));
+    }
+  }
+});
+
+test('AC-5: the base layout is identical to the constants and remapWalker follows the layout', () => {
+  for (const [l, scale] of [[layoutOffice(256, 160), 1], [layoutOffice(327, 0, { minScale: 2 }), 2]]) {
+    assert.equal(l.scale, scale);
+    assert.deepEqual(l.map, { width: MAP.width, height: MAP.height });
+    assert.deepEqual(l.areas, AREAS);
+    assert.deepEqual(l.nodes, WAYPOINTS.nodes);
+    assert.deepEqual(l.furniture, FURNITURE);
+  }
+  const from = layoutOffice(256, 160), to = layoutOffice(940, 480);
+  assert.deepEqual(remapWalker({ x: 1, y: 1, node: 'seat_ui', queue: [] }, from, to), to.nodes.seat_ui);
+  const p = remapWalker({ x: 128, y: 80, node: 'cor_c', queue: ['cor_d'] }, from, to);
+  assert.equal(p.x, 128 * to.map.width / from.map.width);
+  assert.equal(p.y, 80 * to.map.height / from.map.height);
+  const q = remapWalker({ x: 9999, y: -4, node: 'cor_c', queue: ['cor_d'] }, from, to);
+  assert.ok(q.x <= to.map.width && q.y >= 0);
+  assert.deepEqual(remapWalker(null, from, to), { x: 0, y: 0 });
 });
