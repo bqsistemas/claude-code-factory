@@ -102,8 +102,8 @@
   #office-canvas { display: block; image-rendering: pixelated; }
   #office-hits { position: absolute; left: 0; top: 0; width: 0; height: 0; }
   .hit { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 1; }
-  .hit.token { z-index: 2; }
-  .hit.agent { z-index: 3; }
+  .hit-token { z-index: 2; }
+  .hit-agent { z-index: 3; }
   .hit:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
                      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
@@ -807,9 +807,19 @@ function drawOffice(now = 0, moving = false) {
     const list = area.id === 'escalation' ? [] : office.tokens[area.id] || [];
     let x = area.rect.x * S + 4;
     const y = (area.rect.y + area.rect.h) * S - 17;
-    for (const t of list) {
+    const right = (area.rect.x + area.rect.w) * S - 4;
+    for (let i = 0; i < list.length; i++) {
+      const t = list[i];
       const wpx = Math.max(16 * S, ctx.measureText(t.label).width + 8);
-      if (x + wpx > (area.rect.x + area.rect.w) * S) break;
+      const more = i < list.length - 1 ? 26 : 0;
+      if (x + wpx + more > right) {
+        const rest = `+${list.length - i}`;
+        const rw = ctx.measureText(rest).width + 8;
+        ctx.fillStyle = cssVar('--panel'); ctx.fillRect(x, y, rw, 14);
+        ctx.strokeStyle = cssVar('--line'); ctx.strokeRect(x + 0.5, y + 0.5, rw - 1, 13);
+        drawText(ctx, rest, x + rw / 2, y + 11, ink, 'center');
+        break;
+      }
       ctx.fillStyle = '#fcd34d'; ctx.fillRect(x, y, wpx, 14);
       ctx.fillStyle = '#f59e0b'; ctx.fillRect(x, y - 3, Math.min(wpx, 8), 3);
       ctx.strokeStyle = '#1f2333'; ctx.strokeRect(x + 0.5, y + 0.5, wpx - 1, 13);
@@ -836,15 +846,24 @@ function drawOffice(now = 0, moving = false) {
     bubbles.push({ text: st.bubble, color, cx: left + (r.w * S) / 2, y: top });
   }
   // Panel-colored tags with ink text (readable in both themes); the role color is the border.
-  // Tags are pushed up, then down, until none overlap.
+  // A tag may not cover another tag, an area label, the Gate terminal, the Escalation sign or the meeting table:
+  // it looks for the nearest free slot above, then below, its character.
+  const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
+  const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'),
+    ...AREAS.map((a) => ({ x: a.rect.x * S + 2, y: a.rect.y * S + 1, w: ctx.measureText(a.label).width + 6, h: 17 }))];
   const placed = [];
   for (const b of bubbles.sort((p, q) => p.y - q.y)) {
     b.w = ctx.measureText(b.text).width + 10;
     b.x = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w);
-    const free = (y) => placed.every((o) => y + 15 <= o.by || o.by + 15 <= y || b.x + b.w <= o.x || o.x + o.w <= b.x);
-    let by = Math.max(0, b.y - 18);
-    while (by > 0 && !free(by)) by -= 16;
-    if (by <= 0 && !free(Math.max(0, by))) { by = Math.max(0, b.y - 18); while (by + 15 < canvas.height && !free(by)) by += 16; }
+    const hit = (o, y) => !(y + 15 <= o.y || o.y + o.h <= y || b.x + b.w <= o.x || o.x + o.w <= b.x);
+    const free = (y) => y >= 0 && y + 15 <= canvas.height && !placed.some((o) => hit({ x: o.x, y: o.by, w: o.w, h: 15 }, y)) && !obstacles.some((o) => hit(o, y));
+    const home = Math.max(0, b.y - 18);
+    let by = home;
+    for (let d = 0; d <= canvas.height && !free(by); d += 4) {
+      by = home - d;
+      if (!free(by)) by = home + d;
+    }
+    if (!free(by)) by = home;
     b.by = Math.max(0, by);
     placed.push(b);
     ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
@@ -885,7 +904,7 @@ function renderOffice() {
         hits.appendChild(btn);
       }
       keep.add(id);
-      btn.className = `hit ${t.kind}`;
+      btn.className = `hit hit-${t.kind}`;
       btn.dataset.id = t.jobId;
       btn.setAttribute('aria-label', t.label);
       btn.setAttribute('title', t.label);
