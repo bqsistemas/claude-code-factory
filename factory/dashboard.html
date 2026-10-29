@@ -133,7 +133,7 @@
   .meta .when { white-space: nowrap; margin-left: auto; }
   .card.alert { border-color: var(--alert); box-shadow: 0 0 0 3px var(--alert-bg); }
   .card.merged { opacity: .9; }
-  .older { flex: none; border: 1px solid var(--line); border-radius: 10px; background: var(--col); }
+  .older { container-type: inline-size; flex: none; border: 1px solid var(--line); border-radius: 10px; background: var(--col); }
   .older summary { cursor: pointer; padding: 4px 10px; font-size: 12px; font-weight: 600; color: var(--muted); border-radius: 10px; }
   .older[open] summary { color: var(--ink); }
   .rows { list-style: none; margin: 0; padding: 0 4px 4px; display: flex; flex-direction: column; gap: 2px; }
@@ -143,6 +143,10 @@
   .row:hover { background: var(--chip-bg); }
   .row .id { flex: none; color: var(--muted); }
   .row .row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .row-meta { display: flex; align-items: center; gap: 6px; margin-left: auto; flex: none; white-space: nowrap; }
+  .row-meta .n { color: var(--muted); font-weight: 600; }
+  .row-meta .when { color: var(--muted); }
+  @container (max-width: 420px) { .row-meta { display: none; } }
   .row:focus-visible, .older summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .id { font: 11px var(--mono); color: var(--muted); }
   .title { font-weight: 700; color: var(--ink); margin: 1px 0 2px; }
@@ -196,6 +200,10 @@
   .verdict.good { background: var(--pass-bg); color: var(--pass); }
   .verdict.warn { background: var(--changes-bg); color: var(--changes); }
   .verdict.bad  { background: var(--alert-bg); color: var(--alert); }
+  .drawer-summary { flex: none; padding: 10px 22px; border-bottom: 1px solid var(--line); max-height: 40%; overflow-y: auto; }
+  .drawer-summary .card-top, .drawer-summary .links { display: none; }
+  .drawer-summary .card { cursor: default; }
+  .drawer-summary .card:hover { border-color: var(--line); transform: none; }
   .drawer-links { margin-top: 4px; }
   .missing-doc { color: var(--muted); font-style: italic; }
 
@@ -245,6 +253,7 @@
     <div><div class="id" id="d-id"></div><div class="title" id="d-title"></div><div class="drawer-links" id="d-links"></div></div>
     <button class="close" id="close" aria-label="Close">×</button>
   </div>
+  <div class="drawer-summary" id="d-summary"></div>
   <nav class="files" id="files" role="tablist"></nav>
   <article class="doc" id="doc" role="tabpanel" tabindex="0"></article>
 </aside>
@@ -305,8 +314,8 @@
 </script>
 <script type="module">
 import {
-  STAGE_COLUMNS, activeAgents, agentsHtml, costTimeHtml, laneTone, linksHtml, olderMergedHtml, roundChipsHtml,
-  splitMerged,
+  STAGE_COLUMNS, activeAgents, ago, agentsHtml, costTimeHtml, laneTone, linksHtml, olderMergedHtml, roundChipsHtml,
+  roundsOf, splitMerged,
 } from './activity.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
@@ -338,23 +347,6 @@ function syncToggle() {
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-function ago(iso) {
-  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
-  if (!iso || isNaN(s)) return '';
-  if (s < 60) return `${Math.round(s)}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
-  return `${Math.round(s / 86400)}d ago`;
-}
-
-// One row per round: history first, then the current round once it has a gate.
-function roundsOf(job) {
-  const rows = (Array.isArray(job.history) ? job.history : []).filter(r => r && typeof r === 'object');
-  const reviews = job.reviews && typeof job.reviews === 'object' ? job.reviews : {};
-  if (job.round >= 1 && (job.gate || Object.keys(reviews).length)) rows.push({ gate: job.gate, reviews });
-  return rows;
-}
 
 function card(job) {
   const alert = job.stage === 'needs-human';
@@ -471,6 +463,7 @@ async function openDrawer(id, file) {
   $('d-id').textContent = `${job.id} · ${job.branch || ''} · ${job.stage}`;
   $('d-title').textContent = job.title || job.id;
   $('d-links').innerHTML = linksHtml(job, board.repo);
+  $('d-summary').innerHTML = card(job);
   const files = filesOf(job);
   const texts = await Promise.all(files.map(f => load(job, f)));
   if (openJob !== id) return;
