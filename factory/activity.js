@@ -180,13 +180,47 @@ export function splitMerged(jobs, keep = 3) {
   return { recent: sorted.slice(0, n), older: sorted.slice(n) };
 }
 
+/**
+ * Relative time like `5m ago`, or '' when `iso` is missing or unparsable. Never throws.
+ * @param {unknown} iso
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function ago(iso, now = Date.now()) {
+  const t = typeof iso === 'string' ? Date.parse(iso) : NaN;
+  if (Number.isNaN(t)) return '';
+  const s = Math.max(0, (Number(now) - t) / 1000);
+  if (Number.isNaN(s)) return '';
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+/**
+ * One entry per round: history first, then the current round once it has a gate or reviews.
+ * @param {unknown} job a board.json job
+ * @returns {object[]}
+ */
+export function roundsOf(job) {
+  if (!isObject(job)) return [];
+  const rows = (Array.isArray(job.history) ? job.history : []).filter(isObject);
+  const reviews = isObject(job.reviews) ? job.reviews : {};
+  if (job.round >= 1 && (job.gate || Object.keys(reviews).length)) rows.push({ gate: job.gate, reviews });
+  return rows;
+}
+
 /** Collapsed "+N older" group of one-line rows that open the drawer. Every value is escaped. */
-export function olderMergedHtml(jobs, label, open) {
+export function olderMergedHtml(jobs, label, open, now = Date.now()) {
   if (!Array.isArray(jobs) || !jobs.length) return '';
   const rows = jobs.map((j) => {
     const title = esc(j?.title || j?.id);
+    const rounds = roundsOf(j);
+    const meta = (rounds.length ? `<span class="n">R${rounds.length}</span>${roundChipsHtml(rounds[rounds.length - 1])}` : '') +
+      `<span class="cost-time">${costTimeHtml(j, now)}</span><span class="when">${esc(ago(j?.updated, now))}</span>`;
     return `<li><button type="button" class="row" data-id="${esc(j?.id)}" title="${title}">` +
-      `<span class="id">${esc(j?.id)}</span> <span class="row-title">${title}</span></button></li>`;
+      `<span class="id">${esc(j?.id)}</span> <span class="row-title">${title}</span>` +
+      `<span class="row-meta" aria-hidden="true">${meta}</span></button></li>`;
   }).join('');
   return `<details class="older"${open ? ' open' : ''}><summary>${esc(label)}</summary><ul class="rows">${rows}</ul></details>`;
 }
