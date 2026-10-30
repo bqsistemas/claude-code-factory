@@ -93,7 +93,7 @@ test('AC-7: responsive, scroll, focus and i18n are intact', () => {
   const keys = Object.keys(i18n.en).sort();
   assert.deepEqual(keys, ['demoLink', 'emptyBoard', 'hintAwaitingMerge', 'hintNeedsHumanNoPr',
     'hintNeedsHumanPr', 'hintNeedsInfo', 'notWritten', 'olderMerged', 'parkedHuman', 'parkedInfo', 'statAgents', 'statCost',
-    'statJobs', 'statRunning', 'themeToLight', 'themeToNavy']);
+    'statJobs', 'statRunning', 'statusLive', 'themeToLight', 'themeToNavy']);
   for (const l of ['es', 'pt']) assert.deepEqual(Object.keys(i18n[l]).sort(), keys);
 });
 
