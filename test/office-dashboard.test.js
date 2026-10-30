@@ -62,3 +62,16 @@ test('AC-7: static backdrop is painted offscreen once per key', () => {
   assert.ok(keyLine.includes('layoutKey') && keyLine.includes('data-theme') && keyLine.includes('atlasOk'));
   assert.ok(!script.includes("'sign'"));
 });
+
+test('AC-8: the dashboard uses officeLandmarks and paints floors, sky and partitions from the backdrop', () => {
+  assert.match(script, /import\s*\{[^}]*\bofficeLandmarks\b[^}]*\}\s*from '\.\/office\.js'/);
+  const start = script.indexOf('function paintBackdrop'), end = script.indexOf('function drawOffice');
+  const paint = script.slice(start, end), draw = script.slice(end);
+  assert.ok(draw.includes('officeLandmarks(layout)'));
+  for (const old of ["at('deskLong')", "at('flag')", "at('shelf')", "at('bin')", "at('terminal')"]) assert.ok(!draw.includes(old), old);
+  assert.match(paint, /tile\(wl\.sprite, wl\)/);
+  assert.match(paint, /'grass'/);
+  assert.match(paint, /tile\('partition', p\)/);
+  assert.ok(!paint.includes('Math.random'));
+  assert.match(paint, /globalAlpha = 0\.14/);
+});

@@ -35,7 +35,10 @@ export const AREAS = deepFreeze([
 
 const REVIEWERS = ['review-security', 'review-ux', 'review-ui', 'review-code'];
 
-/** Walkable graph. Corridor runs along y=66; each area has a door node next to it. */
+/**
+ * Walkable graph. Corridor runs along y=66; each area has a door node next to it. Bottom-row rooms with inner nodes
+ * (release, lounge) cross their wall strip through the door gap via `in_<id>`, right under the strip and on the door's x.
+ */
 export const WAYPOINTS = deepFreeze({
   nodes: {
     cor_a: { x: 42, y: 66 }, cor_b: { x: 114, y: 66 }, cor_c: { x: 128, y: 66 },
@@ -43,12 +46,13 @@ export const WAYPOINTS = deepFreeze({
     door_research: { x: 42, y: 60 }, door_engineering: { x: 128, y: 60 }, door_review: { x: 214, y: 60 },
     door_release: { x: 42, y: 72 }, door_escalation: { x: 114, y: 72 }, door_lounge: { x: 176, y: 72 },
     door_archive: { x: 232, y: 72 },
-    seat_intake: { x: 20, y: 44 }, seat_spec: { x: 104, y: 44 }, seat_builder: { x: 140, y: 44 },
-    seat_sec: { x: 188, y: 54 }, seat_ux: { x: 204, y: 54 }, seat_ui: { x: 220, y: 54 }, seat_code: { x: 236, y: 54 },
-    seat_approver: { x: 30, y: 110 },
-    meet_sec: { x: 192, y: 32 }, meet_ux: { x: 207, y: 32 }, meet_ui: { x: 222, y: 32 }, meet_code: { x: 237, y: 32 },
-    lounge_1: { x: 152, y: 104 }, lounge_2: { x: 176, y: 104 }, lounge_3: { x: 198, y: 104 }, lounge_4: { x: 152, y: 128 },
-    lounge_5: { x: 176, y: 128 }, lounge_6: { x: 198, y: 128 }, lounge_7: { x: 152, y: 152 }, lounge_8: { x: 176, y: 152 },
+    seat_intake: { x: 24, y: 38 }, seat_spec: { x: 94, y: 36 }, seat_builder: { x: 141, y: 36 },
+    seat_sec: { x: 185, y: 60 }, seat_ux: { x: 199, y: 60 }, seat_ui: { x: 213, y: 60 }, seat_code: { x: 227, y: 60 },
+    seat_approver: { x: 22, y: 112 },
+    meet_sec: { x: 183, y: 21 }, meet_ux: { x: 197, y: 21 }, meet_ui: { x: 211, y: 21 }, meet_code: { x: 225, y: 21 },
+    in_release: { x: 42, y: 90 }, in_lounge: { x: 176, y: 90 },
+    lounge_1: { x: 154, y: 100 }, lounge_2: { x: 177, y: 100 }, lounge_3: { x: 166, y: 113 }, lounge_4: { x: 145, y: 116 },
+    lounge_5: { x: 145, y: 136 }, lounge_6: { x: 164, y: 142 }, lounge_7: { x: 185, y: 150 }, lounge_8: { x: 147, y: 155 },
   },
   edges: [
     ['cor_a', 'cor_b'], ['cor_b', 'cor_c'], ['cor_c', 'cor_d'], ['cor_d', 'cor_e'], ['cor_e', 'cor_f'],
@@ -57,9 +61,9 @@ export const WAYPOINTS = deepFreeze({
     ['seat_intake', 'door_research'], ['seat_spec', 'door_engineering'], ['seat_builder', 'door_engineering'],
     ['seat_sec', 'door_review'], ['seat_ux', 'door_review'], ['seat_ui', 'door_review'], ['seat_code', 'door_review'],
     ['meet_sec', 'door_review'], ['meet_ux', 'door_review'], ['meet_ui', 'door_review'], ['meet_code', 'door_review'],
-    ['seat_approver', 'door_release'],
-    ['lounge_1', 'door_lounge'], ['lounge_2', 'door_lounge'], ['lounge_3', 'door_lounge'], ['lounge_4', 'door_lounge'],
-    ['lounge_5', 'door_lounge'], ['lounge_6', 'door_lounge'], ['lounge_7', 'door_lounge'], ['lounge_8', 'door_lounge'],
+    ['door_release', 'in_release'], ['seat_approver', 'in_release'], ['door_lounge', 'in_lounge'],
+    ['lounge_1', 'in_lounge'], ['lounge_2', 'in_lounge'], ['lounge_3', 'in_lounge'], ['lounge_4', 'in_lounge'],
+    ['lounge_5', 'in_lounge'], ['lounge_6', 'in_lounge'], ['lounge_7', 'in_lounge'], ['lounge_8', 'in_lounge'],
   ],
 });
 
@@ -83,7 +87,8 @@ export const MEETING_SEATS = deepFreeze({
 
 /**
  * Atlas rects inside PixelOfficeAssets.png (256x160, CC0 pack by 2dPig).
- * The first row of the file (y < 38) is sky and clouds; nothing here uses it.
+ * The first rows of the file (y < 38) are sky and clouds; only `sky` uses them. Every rect was measured against
+ * the alpha of the PNG.
  */
 export const SPRITES = deepFreeze({
   charA: rect(2, 104, 16, 24),    // character: dark hair, grey shirt
@@ -91,22 +96,37 @@ export const SPRITES = deepFreeze({
   charC: rect(40, 106, 14, 22),   // character: grey hair, glasses
   charD: rect(3, 132, 17, 24),    // character: long red hair, blue top
   charE: rect(22, 131, 17, 24),   // character: black bob, maroon top
+  chairOrange: rect(6, 41, 11, 22),
+  chairYellow: rect(19, 41, 11, 22),
+  chairGreen: rect(32, 41, 11, 22),
+  chairBlue: rect(45, 41, 11, 22),
+  chairWhite: rect(58, 41, 11, 22),
+  chairGrey: rect(71, 41, 11, 22),
   desk: rect(85, 47, 26, 16),     // short orange desk
-  deskLong: rect(115, 47, 40, 16), // long orange table, used as the meeting table
+  deskLong: rect(115, 47, 40, 16), // long orange table: the meeting table and the Lounge table
+  sofaGrey: rect(119, 66, 33, 15), // grey sofa
   sofaBlue: rect(120, 83, 33, 16), // blue sofa
   sofaGreen: rect(120, 102, 33, 16), // green sofa
   sofaOrange: rect(120, 121, 33, 16), // orange sofa
   plant: rect(170, 64, 14, 20),   // potted plant
   terminal: rect(59, 96, 28, 28), // dark glass panel, the Gate terminal
-  shelf: rect(184, 126, 24, 31),  // red shelf with bottles, the Archive shelf
-  bin: rect(116, 143, 10, 15),    // green waste bin, the Archive bin
+  shelf: rect(184, 126, 24, 31),  // red shelf with bottles
+  vending: rect(159, 123, 24, 34), // vending machine
+  bin: rect(116, 143, 10, 15),    // green waste bin
+  binRed: rect(126, 143, 10, 15), // red waste bin
+  binBlue: rect(136, 143, 10, 15), // blue waste bin
+  cooler: rect(147, 140, 9, 17),  // water cooler
+  pc: rect(233, 106, 15, 19),     // white office machine, used as the workstation PC
+  printer: rect(200, 107, 9, 9),  // small printer
   wall: rect(84, 70, 26, 20),     // white wall strip, tiled along the top of each area
+  sky: rect(0, 8, 64, 20),        // blue sky with clouds, the Lounge's outdoor "wall"
   floor: rect(3, 68, 73, 24),     // blue plank floor, tiled under each area
-  partition: rect(171, 44, 79, 17), // grey partition panel, tiled for dividers between areas
+  partition: rect(175, 49, 24, 10), // flat grey body of the cubicle panel, tiled for dividers between areas
   window: rect(59, 96, 26, 20),   // blue double-pane window (top 20 rows), a wall prop
   clock: rect(159, 108, 19, 6),   // red digital clock "12:00", a wall prop
-  calendar: rect(183, 107, 6, 8), // paper sheet, a wall prop that fits narrow wall segments
-  flag: rect(207, 94, 12, 9),     // framed striped flag, the Escalation prop
+  calendar: rect(234, 81, 17, 11), // wall calendar grid
+  papers: rect(183, 107, 6, 8),   // paper sheet, a wall prop that fits narrow wall segments
+  flag: rect(207, 94, 12, 9),     // framed striped flag
 });
 
 /** Height of the wall strip at the top of each area, in map pixels. */
@@ -129,18 +149,29 @@ export const VERBS = deepFreeze({
   approver: 'approving',
 });
 
-/** Static scenery: [sprite, x, y] of the top-left corner. */
+/** Static scenery: [sprite, x, y] of the top-left corner, in base-map pixels. Each room has its own set. */
 export const FURNITURE = deepFreeze([
-  { sprite: 'desk', x: 7, y: 46 }, { sprite: 'plant', x: 62, y: 34 },
-  { sprite: 'desk', x: 91, y: 46 }, { sprite: 'desk', x: 127, y: 46 },
-  { sprite: 'terminal', x: 154, y: 28 }, { sprite: 'plant', x: 90, y: 10 },
-  { sprite: 'deskLong', x: 187, y: 28 },
-  { sprite: 'desk', x: 175, y: 46 }, { sprite: 'desk', x: 207, y: 46 },
-  { sprite: 'plant', x: 240, y: 36 },
-  { sprite: 'desk', x: 17, y: 112 }, { sprite: 'plant', x: 66, y: 90 },
-  { sprite: 'flag', x: 108, y: 92 },
-  { sprite: 'plant', x: 186, y: 138 },
-  { sprite: 'shelf', x: 212, y: 82 }, { sprite: 'bin', x: 238, y: 108 },
+  // Research
+  { sprite: 'chairOrange', x: 1, y: 34 }, { sprite: 'desk', x: 13, y: 40 }, { sprite: 'calendar', x: 16, y: 43 },
+  { sprite: 'papers', x: 33, y: 36 }, { sprite: 'plant', x: 62, y: 34 },
+  // Engineering
+  { sprite: 'plant', x: 90, y: 10 }, { sprite: 'desk', x: 86, y: 40 }, { sprite: 'pc', x: 100, y: 34 },
+  { sprite: 'chairBlue', x: 115, y: 34 }, { sprite: 'desk', x: 128, y: 40 }, { sprite: 'terminal', x: 154, y: 28 },
+  // Review
+  { sprite: 'deskLong', x: 176, y: 24 }, { sprite: 'shelf', x: 232, y: 20 },
+  { sprite: 'chairYellow', x: 180, y: 34 }, { sprite: 'chairWhite', x: 194, y: 34 },
+  { sprite: 'chairYellow', x: 208, y: 34 }, { sprite: 'chairWhite', x: 222, y: 34 },
+  // Release
+  { sprite: 'flag', x: 60, y: 91 }, { sprite: 'desk', x: 10, y: 116 }, { sprite: 'printer', x: 28, y: 108 },
+  { sprite: 'chairGreen', x: 37, y: 110 }, { sprite: 'sofaBlue', x: 46, y: 132 }, { sprite: 'plant', x: 4, y: 138 },
+  // Escalation
+  { sprite: 'calendar', x: 110, y: 92 }, { sprite: 'sofaGrey', x: 100, y: 126 }, { sprite: 'binRed', x: 90, y: 138 },
+  // Archive
+  { sprite: 'shelf', x: 212, y: 82 }, { sprite: 'bin', x: 238, y: 108 }, { sprite: 'cooler', x: 214, y: 130 },
+  // Lounge: an outdoor terrace around a central table
+  { sprite: 'vending', x: 180, y: 88 }, { sprite: 'deskLong', x: 148, y: 124 },
+  { sprite: 'chairGrey', x: 150, y: 106 }, { sprite: 'chairGreen', x: 168, y: 106 },
+  { sprite: 'chairWhite', x: 150, y: 134 }, { sprite: 'chairYellow', x: 168, y: 134 },
 ]);
 
 const inside = (r, p) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
@@ -198,15 +229,15 @@ export function layoutOffice(width, height, opts) {
   return { scale, map: { width: mw, height: mh }, areas, nodes, furniture };
 }
 
-const EMPTY_BACKDROP = { corridor: null, doors: [], walls: [], wallProps: [], partitions: [] };
+const EMPTY_BACKDROP = { corridor: null, doors: [], floors: [], walls: [], wallProps: [], partitions: [] };
 
 /**
- * Static scenery geometry for a `layoutOffice` result: corridor, door gaps, wall strips, wall props and partitions,
- * all integers in map pixels. Pure; never throws; invalid input gives an empty backdrop.
+ * Static scenery geometry for a `layoutOffice` result: corridor, door gaps, floors, wall strips (`sky` for the Lounge),
+ * wall props and partitions, all integers in map pixels. Pure; never throws; invalid input gives an empty backdrop.
  */
 export function officeBackdrop(layout) {
   try {
-    const out = () => ({ corridor: null, doors: [], walls: [], wallProps: [], partitions: [] });
+    const out = () => ({ corridor: null, doors: [], floors: [], walls: [], wallProps: [], partitions: [] });
     if (!isObject(layout) || !Array.isArray(layout.areas) || !layout.areas.length || !isObject(layout.nodes) || !isObject(layout.map)) return out();
     const areas = layout.areas;
     const ok = areas.every((a) => isObject(a) && typeof a.id === 'string' && isObject(a.rect) &&
@@ -226,14 +257,16 @@ export function officeBackdrop(layout) {
       const dw = Math.min(DOOR_W, w);
       const gx = Math.min(Math.max(x, dx - Math.floor(dw / 2)), x + w - dw);
       res.doors.push({ id: a.id, x: gx, w: dw });
+      const outdoor = a.id === 'lounge';
+      res.floors.push({ id: a.id, x, y, w, h, kind: outdoor ? 'grass' : 'planks' });
       const segs = isTop.has(a.id)
         ? [{ x, w }]
         : [{ x, w: gx - x }, { x: gx + dw, w: x + w - gx - dw }].filter((s) => s.w > 0);
-      for (const s of segs) res.walls.push({ id: a.id, x: s.x, y, w: s.w, h: WALL_H });
+      for (const s of segs) res.walls.push({ id: a.id, x: s.x, y, w: s.w, h: WALL_H, sprite: outdoor ? 'sky' : 'wall' });
       const best = segs.reduce((m, s) => (s.w > m.w ? s : m), segs[0] ?? { x, w: 0 });
-      for (const name of ['window', 'clock', 'calendar']) {
+      for (const name of outdoor ? [] : ['window', 'clock', 'calendar', 'papers']) {
         const sp = SPRITES[name];
-        if (best.w < sp.w + (name === 'calendar' ? 0 : 2)) continue;
+        if (best.w < sp.w + (name === 'calendar' || name === 'papers' ? 0 : 2)) continue;
         res.wallProps.push({ id: a.id, sprite: name, x: best.x + Math.floor((best.w - sp.w) / 2), y: y + Math.floor((WALL_H - sp.h) / 2) });
         break;
       }
@@ -253,7 +286,32 @@ export function officeBackdrop(layout) {
     }
     return res;
   } catch {
-    return { ...EMPTY_BACKDROP, doors: [], walls: [], wallProps: [], partitions: [] };
+    return { ...EMPTY_BACKDROP, doors: [], floors: [], walls: [], wallProps: [], partitions: [] };
+  }
+}
+
+const LANDMARKS = { gate: ['terminal', 'engineering'], meeting: ['deskLong', 'review'], escalation: ['calendar', 'escalation'],
+  shelf: ['shelf', 'archive'], bin: ['bin', 'archive'] };
+
+/**
+ * The special furniture the dashboard draws on: the Gate terminal (Engineering), the meeting table (Review), the
+ * Escalation calendar, and the Archive shelf and bin. Each is the entry of `layout.furniture` with that sprite whose
+ * center is inside that area, or null. Pure; never throws.
+ */
+export function officeLandmarks(layout) {
+  const res = { gate: null, meeting: null, escalation: null, shelf: null, bin: null };
+  try {
+    if (!isObject(layout) || !Array.isArray(layout.furniture) || !Array.isArray(layout.areas)) return res;
+    const rectOf = new Map(layout.areas.filter((a) => isObject(a) && isObject(a.rect)).map((a) => [a.id, a.rect]));
+    for (const [key, [sprite, areaId]] of Object.entries(LANDMARKS)) {
+      const r = rectOf.get(areaId), sp = Object.hasOwn(SPRITES, sprite) ? SPRITES[sprite] : null;
+      if (!r || !sp) continue;
+      res[key] = layout.furniture.find((f) => isObject(f) && f.sprite === sprite && Number.isFinite(f.x) && Number.isFinite(f.y) &&
+        inside(r, { x: f.x + sp.w / 2, y: f.y + sp.h / 2 })) ?? null;
+    }
+    return res;
+  } catch {
+    return { gate: null, meeting: null, escalation: null, shelf: null, bin: null };
   }
 }
 
