@@ -1,5 +1,5 @@
 // Pure projection of the existing board jobs. No independent lifecycle or persistence.
-import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone } from './activity.js';
+import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone, costAvailable, COST_TEXT_EN } from './activity.js';
 import { AREAS, MAP, WAYPOINTS, SEATS, LOUNGE_SPOTS, MEETING_SEATS, SHORT } from './office-map.js';
 export { AREAS, MAP, WAYPOINTS, SEATS, LOUNGE_SPOTS, MEETING_SEATS, FURNITURE, WALL_H, PARTITION, DOOR_W, layoutOffice, officeBackdrop } from './office-map.js';
 export { SPRITES, CHARACTER_FOR } from './sprite-atlas.js';
@@ -16,7 +16,7 @@ const TOKEN_AREAS=AREAS.filter(a=>!['archive','lounge','escalation'].includes(a.
 export const VERBS=Object.freeze({intake:'triaging','spec-writer':'writing spec',builder:'implementing','review-security':'reviewing','review-ux':'reviewing','review-ui':'reviewing','review-code':'reviewing',approver:'approving'});
 export function areaForStage(stage){return AREA_OF_STAGE.get(stage)||'research';}
 export function areaTone(id){const a=AREA_BY_ID.get(id);return a?.stages.length?laneTone(a.stages[0]):'neutral';}
-const finiteCost = (j) => (isObject(j) && typeof j.cost_usd === 'number' && Number.isFinite(j.cost_usd) && j.cost_usd >= 0 ? j.cost_usd : 0);
+const finiteCost = (j) => costAvailable(j) ? j.cost_usd : 0;
 
 /** Header tiles: total jobs, running (intake through merging), active agents, total cost. */
 export function headerStats(jobs) {
@@ -27,11 +27,15 @@ export function headerStats(jobs) {
     agents += activeAgents(job).length;
     cost += finiteCost(job);
   }
-  return { total: jobs.length, running, agents, cost };
+  const unknown = jobs.filter((j) => j?.cost_status === 'unavailable' || (j?.provider === 'codex' && !costAvailable(j))).length;
+  return { total: jobs.length, running, agents, cost, ...(unknown ? { cost_unavailable: unknown } : {}) };
 }
 
-/** `$X.XX`; anything that is not a finite number is `$0.00`. */
-export function formatCost(n) {
+/** Legacy numeric formatting, with an explicit indicator for unknown subtotals. */
+export function formatCost(n, unavailable = 0, text = COST_TEXT_EN) {
+  if (unavailable > 0) return n > 0
+    ? `$${n.toFixed(2)} + ${(text.costUnavailableCount ?? COST_TEXT_EN.costUnavailableCount).replace('{n}', unavailable)}`
+    : (text.costUnavailable ?? COST_TEXT_EN.costUnavailable);
   return `$${(typeof n === 'number' && Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
 

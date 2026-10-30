@@ -67,7 +67,7 @@ test('AC-4: render() uses laneTone and the new header markup', () => {
 
 test('AC-5: card() keeps its content and only checks merged cards', () => {
   const body = fnBody('card');
-  for (const s of ['linksHtml(', 'agentsHtml(job)', 'roundChipsHtml(', 'costTimeHtml(job)', 'esc(job.note)', 'ago(job.updated)',
+  for (const s of ['linksHtml(', 'agentsHtml(job)', 'roundChipsHtml(', 'costTimeHtml(job, undefined, T)', 'esc(job.note)', 'ago(job.updated)',
     'T.hintNeedsHumanPr', 'T.hintNeedsHumanNoPr', 'T.hintAwaitingMerge', 'T.hintNeedsInfo', '/factory rework']) {
     assert.ok(body.includes(s), s);
   }

@@ -30,6 +30,7 @@
       }
     },
     "codex": {
+      "prices": {},
       "models": { "intake": "gpt-6-luna", "spec-writer": "gpt-6-luna", "approver": "gpt-6.1-sol" },
       "routing": {
         "builder": { "low": "gpt-6-luna", "medium": "gpt-6-luna", "high": "gpt-6.1-sol" },
@@ -48,5 +49,5 @@
     "sonnet": { "input": 3, "output": 15, "cache_write": 3.75, "cache_read": 0.3 },
     "haiku": { "input": 1, "output": 5, "cache_write": 1.25, "cache_read": 0.1 }
   },
-  "protected_tests": ["test/route.test.js", "test/job.test.js", "test/gate.test.js", "test/cost.test.js"]
+  "protected_tests": ["test/route.test.js", "test/job.test.js", "test/gate.test.js", "test/cost.test.js", "test/codex-cost.test.js"]
 }

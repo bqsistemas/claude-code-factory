@@ -14,13 +14,13 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { STAGE_COLUMNS, formatDuration } from '../activity.js';
-import { jobCost, readTranscripts } from './cost.js';
+import { STAGE_COLUMNS, formatDuration, costAvailable, costLabel } from '../activity.js';
+import { codexJobCost, jobCost, readCodexRollouts, readTranscripts } from './cost.js';
 import { gate as runGate } from './gate.js';
 import { parseIntake } from './intake.js';
 import { DEFAULT_PROVIDER, providerConfig, route, stageModels } from './route.js';
 import {
-  JOB_ID, Refused, Usage, configLanguage, factoryRoot, firstLine, isMain, jobDir, loadConfig, mustRun, now, readText, run,
+  JOB_ID, Refused, Usage, codexSessionsDir, configLanguage, factoryRoot, firstLine, isMain, jobDir, loadConfig, mustRun, now, readText, run,
   runCli, transcriptsDir, writeAtomic,
 } from './util.js';
 
@@ -678,7 +678,8 @@ function newJob(c, n, requestedProvider) {
     id, issue: n, title, pr: null, branch: `factory/${id}`, worktree: join(c.root, '.worktrees', id),
     port: 3000 + number, stage: 'intake', round: 0, max_rounds: c.config.max_rounds ?? 3,
     provider, intake: null, agents: null, models: stageModels(c.config, provider), gate: null, reviews: {}, history: [],
-    decision: null, note: '', parked_from: null, cost_usd: 0, started: now(), finished: null, updated: now(),
+    decision: null, note: '', parked_from: null, cost_usd: provider === 'codex' ? null : 0,
+    ...(provider === 'codex' ? { cost_status: 'unavailable', cost_reason: 'no_associated_usage' } : {}), started: now(), finished: null, updated: now(),
   };
   writeAtomic(file(c, job, 'issue.md'), issueMarkdown(issue));
   saveJob(c, job);
@@ -688,20 +689,29 @@ function newJob(c, n, requestedProvider) {
 function sync(c, id) {
   const { job } = loadJob(c, id);
   refreshFromFiles(c, job);
-  job.cost_usd = jobCost(readTranscripts(transcriptsDir(c.root)), job.id, c.config.prices ?? {});
+  if (job.provider === 'codex') {
+    Object.assign(job, codexJobCost(readCodexRollouts(codexSessionsDir(), c.root), job,
+      c.config.providers?.codex?.prices ?? {}, c.root));
+  } else {
+    job.cost_usd = jobCost(readTranscripts(transcriptsDir(c.root)), job.id, c.config.prices ?? {});
+    job.cost_status = 'available';
+    job.cost_reason = null;
+  }
   saveJob(c, job);
-  return `${job.id} ${job.stage} $${job.cost_usd.toFixed(2)}`;
+  return `${job.id} ${job.stage} ${costLabel(job)}`;
 }
 
 function summary(c) {
   const jobs = allJobs(c.root);
   const money = (n) => `$${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
   const duration = (j) => formatDuration((Date.parse(j.finished ?? '') || Date.now()) - Date.parse(j.started));
-  const rows = jobs.map((j) => [j.id, `#${j.issue}`, j.stage, money(j.cost_usd), duration(j)]);
+  const rows = jobs.map((j) => [j.id, `#${j.issue}`, j.stage, costAvailable(j) ? money(j.cost_usd) : 'Cost unavailable', duration(j)]);
   const widths = [0, 1, 2, 3].map((i) => Math.max(0, ...rows.map((r) => r[i].length)));
   const lines = rows.map((r) => r.map((cell, i) => (i < 4 ? cell.padEnd(widths[i]) : cell)).join('  '));
-  const total = jobs.reduce((sum, j) => sum + (Number.isFinite(j.cost_usd) ? j.cost_usd : 0), 0);
-  lines.push(`total: ${jobs.length} job${jobs.length === 1 ? '' : 's'}, ${money(total)}`);
+  const total = jobs.reduce((sum, j) => sum + (costAvailable(j) ? j.cost_usd : 0), 0);
+  const unknown = jobs.filter((j) => !costAvailable(j)).length;
+  const amount = unknown && total === 0 ? 'Cost unavailable' : money(total);
+  lines.push(`total: ${jobs.length} job${jobs.length === 1 ? '' : 's'}, ${amount}${unknown ? ` (known subtotal; ${unknown} cost unavailable)` : ''}`);
   return lines.join('\n');
 }
 

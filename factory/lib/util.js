@@ -65,6 +65,11 @@ export function transcriptsDir(root) {
   return process.env.FACTORY_TRANSCRIPTS || join(homedir(), '.claude/projects', root.replace(/[/.]/g, '-'));
 }
 
+/** Codex account home, with an isolated override for tests/operators. */
+export function codexSessionsDir() {
+  return process.env.FACTORY_CODEX_SESSIONS || join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'sessions');
+}
+
 export function readText(file) {
   try {
     return readFileSync(file, 'utf8');
