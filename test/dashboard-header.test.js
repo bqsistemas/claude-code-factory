@@ -124,3 +124,53 @@ test('tablet: stats take their own full-width row at 900px and below', () => {
   const tablet = media.find((m) => /max-width:\s*900px/.test(m.head)).inner;
   assert.match(decls(tablet, '.stats'), /grid-column:\s*1 \/ -1/);
 });
+
+const themeBlocks = {
+  navy: css.match(/:root,\s*:root\[data-theme="navy"\]\s*\{([^}]*)\}/)[1],
+  light: css.match(/:root\[data-theme="light"\]\s*\{([^}]*)\}/)[1],
+};
+const prop = (block, name) => (block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})\\s*;`)) || [])[1];
+const hue = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  if (d === 0) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+};
+const lum = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+test('AC-1 (violet): .brand-icon colors itself with --brand-icon', () => {
+  const d = rule('.brand-icon');
+  assert.match(d, /color:\s*var\(--brand-icon\)/);
+  assert.doesNotMatch(d, /var\(--active\)/);
+});
+
+test('AC-2 (violet): both themes define --brand-icon as a 6-digit hex', () => {
+  for (const t of ['navy', 'light']) assert.ok(prop(themeBlocks[t], '--brand-icon'), t);
+});
+
+test('AC-3 (violet): --brand-icon hue is violet (250-300 degrees) in both themes', () => {
+  for (const t of ['navy', 'light']) {
+    const h = hue(prop(themeBlocks[t], '--brand-icon'));
+    assert.ok(h >= 250 && h <= 300, `${t} hue ${h}`);
+  }
+});
+
+test('AC-4 (violet): --brand-icon has at least 3:1 contrast against --bg in each theme', () => {
+  for (const t of ['navy', 'light']) {
+    const c = contrast(prop(themeBlocks[t], '--brand-icon'), prop(themeBlocks[t], '--bg'));
+    assert.ok(c >= 3, `${t} contrast ${c}`);
+  }
+});
+
+test('AC-5 (violet): --active and .stat .ico-agents are unchanged', () => {
+  assert.equal(prop(themeBlocks.navy, '--active'), '#1e6bff');
+  assert.match(rule('.stat .ico-agents'), /color:\s*var\(--active\)/);
+});

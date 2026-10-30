@@ -38,6 +38,7 @@
     --pending: #a5b4fc; --alert: #fb923c; --alert-bg: #3a1f1c; --chip-bg: #1f2b48;
     --focus: #dbe6ff; --count-base: #0b1220; --scrim: rgba(2,6,14,.6); --shadow: rgba(0,0,0,.5);
     --active: #1e6bff; --done: #22c55e; --on-accent: #fff;
+    --brand-icon: #a78bfa;
     --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   :root[data-theme="light"] {
@@ -46,6 +47,7 @@
     --pass: #166534; --pass-bg: #dcfce7; --changes: #92400e; --changes-bg: #fef3c7;
     --pending: #4338ca; --alert: #b91c1c; --alert-bg: #fee2e2; --chip-bg: #e6ebf7;
     --focus: #1e3a8a; --count-base: #ffffff; --scrim: rgba(15,23,42,.35); --shadow: rgba(15,23,42,.2);
+    --brand-icon: #6d28d9;
   }
   * { box-sizing: border-box; }
   /* One page: the body fills the viewport; lanes scroll inside, never the page. */
@@ -56,7 +58,7 @@
   .top { display: grid; grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-rows: 18px 14px;
          column-gap: 10px; align-items: center; flex: none; padding: 4px 16px; }
   .brand-icon { grid-column: 1; grid-row: 1 / 3; display: inline-flex; align-items: center; justify-content: center;
-                width: 32px; height: 32px; color: var(--active); }
+                width: 32px; height: 32px; color: var(--brand-icon); }
   .brand-icon svg { width: 28px; height: 28px; }
   .top h1 { grid-column: 2; grid-row: 1; font-size: 16px; line-height: 18px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
   .brand-sub { grid-column: 2; grid-row: 2; font-size: 11px; line-height: 14px; margin: 0; color: var(--muted); white-space: nowrap; }
