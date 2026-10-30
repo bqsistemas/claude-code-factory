@@ -93,27 +93,32 @@
   .stat .v { font: 700 13px var(--mono); color: var(--ink); }
 
   /* Agent Office and the reserved Pipeline panel: two equal halves above the kanban. */
-  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; height: clamp(260px, 56vh, 520px);
+  .panels { display: grid; grid-template-columns: .82fr 1.18fr; gap: 8px; flex: none; height: clamp(260px, 56vh, 520px);
             padding: 8px 16px 0; }
   .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px; border-radius: 14px;
            background: var(--col); border: 1px solid var(--line); }
   .panel h2 { margin: 0 0 6px; flex: none; font-size: 14px; font-weight: 700; color: var(--ink); }
-  .office-stage { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-  #office-canvas { display: block; image-rendering: pixelated; }
+  .office-stage { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; justify-content: center;
+                  background: #081321; }
+  #office-canvas { display: block; max-width: 100%; image-rendering: auto; }
+  .office-status { display: flex; flex-wrap: wrap; gap: 4px; flex: none; padding-top: 6px; max-height: min(30vh, 132px); overflow-y: auto; }
+  .office-status button, .office-status span { font: 11px var(--sans); color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--role-color); border-radius: 4px; padding: 3px 6px; text-align: left; }
+  .office-status button { cursor: pointer; }
+  .office-status button:focus-visible { outline: 2px solid var(--focus); }
   #office-hits { position: absolute; left: 0; top: 0; width: 0; height: 0; }
   .office-stage.more { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
                        mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
   .hit { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; z-index: 1; }
-  .hit-token { z-index: 2; }
-  .hit-agent { z-index: 3; }
+  .hit-stage { z-index: 2; }
+  .hit-token { z-index: 3; }
+  .hit-agent { z-index: 4; }
   .hit:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
                      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   @media (max-width: 900px) {
     .panels { grid-template-columns: 1fr; height: auto; }
-    /* Stacked: the map keeps scale 2 or more (tags stay legible) and scrolls sideways inside the panel if needed. */
-    .office-stage { display: block; flex: none; width: 100%; overflow-x: auto; }
-    #office-canvas { margin: 0 auto; }
+    /* Keep the whole connected office visible, including on narrow screens. */
+    .office-stage { display: flex; flex: none; width: 100%; aspect-ratio: 768 / 500; overflow: hidden; background: #081321; }
     .panel.pipeline { min-height: 80px; }
   }
   @media (max-width: 640px) {
@@ -289,6 +294,7 @@
       <canvas id="office-canvas" aria-hidden="true"></canvas>
       <div id="office-hits"></div>
     </div>
+    <div id="office-status" class="office-status" aria-label="Agent work and waiting jobs"></div>
     <ul id="office-live" class="visually-hidden" aria-live="polite"></ul>
   </section>
   <section class="panel pipeline" id="pipeline" aria-label="Pipeline">
@@ -379,11 +385,8 @@ import {
   STAGE_COLUMNS, activeAgents, ago, agentsHtml, costTimeHtml, laneTone, linksHtml, olderMergedHtml, roundChipsHtml,
   roundsOf, splitMerged,
 } from './activity.js';
-import {
-  CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats, officeBackdrop,
-  hitTargets, idleTagBox, layoutOffice, officeLandmarks, officeState, remapWalker, route,
-} from './office.js';
-import { AVATARS } from './avatars.js';
+import { formatCost, headerStats } from './office.js';
+import { createOffice } from './office-renderer.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const BASE = DEMO ? 'demo/' : '';
@@ -666,407 +669,11 @@ function renderStats() {
   }
 }
 
-// Short name tags for idle characters in the Lounge (full labels stay in the accessible list).
-const SHORT = { intake: 'Intake', 'spec-writer': 'Spec', builder: 'Build', 'review-security': 'Sec', 'review-ux': 'UX',
-  'review-ui': 'UI', 'review-code': 'Code', approver: 'Appr.' };
-const SPRITE_URL = 'assets/pixel-office/PixelOfficeAssets.png';
-const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)');
-const SPEED = 48;                       // map pixels per second
-const atlas = new Image();
-let atlasOk = false, office = null, officeKey = '', liveKey = '', layout = null, layoutKey = '', raf = 0, last = 0;
-const walkers = new Map();              // agent -> { x, y, node, queue }
-const backdrop = document.createElement('canvas');
-let backdropKey = '';
-let boxes = new Map();                  // "kind:key" -> screen-pixel box, for hotspots
-atlas.onload = () => { atlasOk = true; drawOffice(); };
-atlas.src = SPRITE_URL;
-
-const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-// Tones come from the kanban's own `.col.tone-*` rules via a probe, so there is one source.
-let toneCache = null;
-function tones() {
-  if (toneCache) return toneCache;
-  const out = { neutral: cssVar('--muted') };
-  for (const tone of ['pending', 'active', 'review', 'done', 'parked', 'muted']) {
-    const probe = document.createElement('div');
-    probe.className = `col tone-${tone}`;
-    probe.hidden = true;
-    document.body.appendChild(probe);
-    out[tone] = getComputedStyle(probe).getPropertyValue('--accent').trim();
-    probe.remove();
-  }
-  return (toneCache = out);
-}
-const toneColor = (tone) => tones()[tone] || tones().neutral;
-const hits = $('office-hits');
-
-function fitCanvas() {
-  const stage = $('office-stage'), canvas = $('office-canvas');
-  const stacked = window.matchMedia('(max-width: 900px)').matches;
-  const key = `${stage.clientWidth}x${stage.clientHeight}:${stacked}`;
-  if (!layout || key !== layoutKey) {
-    const next = layoutOffice(stage.clientWidth, stacked ? 0 : stage.clientHeight, { minScale: stacked ? 2 : 1 });
-    if (layout) for (const w of walkers.values()) Object.assign(w, remapWalker(w, layout, next));
-    layout = next;
-    layoutKey = key;
-  }
-  const cw = layout.map.width * layout.scale, ch = layout.map.height * layout.scale;
-  if (canvas.width !== cw || canvas.height !== ch) {
-    canvas.width = cw;
-    canvas.height = ch;
-  }
-  stage.classList.toggle('more', stage.scrollLeft + stage.clientWidth < stage.scrollWidth - 2);
-  hits.style.left = canvas.offsetLeft + 'px';
-  hits.style.top = canvas.offsetTop + 'px';
-}
-
-function syncWalkers() {
-  for (const [agent, a] of Object.entries(office.agents)) {
-    let w = walkers.get(agent);
-    const at = layout.nodes[a.node];
-    if (!w) { w = { x: at.x, y: at.y, node: a.node, queue: [], target: a.node }; walkers.set(agent, w); }
-    if (w.target !== a.node) {
-      w.target = a.node;
-      const path = route(w.node, a.node);
-      if (REDUCED.matches || path.length < 2) { w.x = at.x; w.y = at.y; w.node = a.node; w.queue = []; }
-      else w.queue = path.slice(1);
-    }
-  }
-}
-
-function step(now) {
-  const dt = Math.min(0.1, (now - last) / 1000);
-  last = now;
-  let moving = false;
-  for (const w of walkers.values()) {
-    let budget = SPEED * dt;
-    while (w.queue.length && budget > 0) {
-      const to = layout.nodes[w.queue[0]];
-      const dx = to.x - w.x, dy = to.y - w.y, d = Math.hypot(dx, dy);
-      if (d <= budget) { w.x = to.x; w.y = to.y; w.node = w.queue.shift(); budget -= d; }
-      else { w.x += (dx / d) * budget; w.y += (dy / d) * budget; budget = 0; }
-    }
-    if (w.queue.length) moving = true;
-  }
-  drawOffice(now, moving);
-  raf = moving ? requestAnimationFrame(step) : 0;
-}
-
-function kick() {
-  if (raf || ![...walkers.values()].some((w) => w.queue.length)) return;
-  last = performance.now();
-  raf = requestAnimationFrame(step);
-}
-
-function drawText(ctx, text, x, y, color, align = 'left') {
-  ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText(text, x, y);
-}
-
-// Static scenery (floor, walls, partitions, furniture) painted once per layout, theme and atlas state.
-function paintBackdrop() {
-  const canvas = $('office-canvas');
-  backdrop.width = canvas.width; backdrop.height = canvas.height;
-  const ctx = backdrop.getContext('2d');
-  const S = layout.scale, line = cssVar('--line');
-  ctx.imageSmoothingEnabled = false;
-  ctx.fillStyle = cssVar('--col');
-  ctx.fillRect(0, 0, backdrop.width, backdrop.height);
-  const outline = (r) => {
-    ctx.globalAlpha = 1; ctx.strokeStyle = line; ctx.lineWidth = 1;
-    ctx.strokeRect(r.x * S + 0.5, r.y * S + 0.5, r.w * S - 1, r.h * S - 1);
-  };
-  if (!atlasOk) {
-    for (const area of layout.areas) {
-      const { x, y, w, h } = area.rect;
-      ctx.globalAlpha = 0.14; ctx.fillStyle = toneColor(areaTone(area.id)); ctx.fillRect(x * S, y * S, w * S, h * S);
-      outline(area.rect);
-    }
-    ctx.globalAlpha = 1;
-    return;
-  }
-  const sprite = (name, x, y) => {
-    const r = SPRITES[name];
-    ctx.drawImage(atlas, r.x, r.y, r.w, r.h, x * S, y * S, r.w * S, r.h * S);
-  };
-  // Tile a sprite over a map-pixel rect, anchored at its top-left corner and clipped to it.
-  const tile = (name, rc) => {
-    const r = SPRITES[name];
-    ctx.save();
-    ctx.beginPath(); ctx.rect(rc.x * S, rc.y * S, rc.w * S, rc.h * S); ctx.clip();
-    for (let ty = rc.y; ty < rc.y + rc.h; ty += r.h) for (let tx = rc.x; tx < rc.x + rc.w; tx += r.w) sprite(name, tx, ty);
-    ctx.restore();
-  };
-  const bd = officeBackdrop(layout);
-  if (bd.corridor) {
-    const c = bd.corridor;
-    ctx.fillStyle = line; ctx.fillRect(c.x * S, c.y * S, c.w * S, c.h * S);
-  }
-  // Outdoor floor of the Lounge: fixed colors and a fixed pattern (no randomness), so the cached backdrop is stable.
-  const grass = (rc) => {
-    ctx.fillStyle = '#5aa84a'; ctx.fillRect(rc.x * S, rc.y * S, rc.w * S, rc.h * S);
-    for (let gy = 0; gy < rc.h; gy += 6) {
-      for (let gx = 0; gx < rc.w; gx += 8) {
-        const px = rc.x + gx + ((gy / 6) % 2 ? 4 : 0), py = rc.y + gy;
-        ctx.fillStyle = ((gx / 8 + gy / 6) % 3 === 0) ? '#4a9440' : '#6dbb59';
-        ctx.fillRect(px * S, py * S, 2 * S, S);
-        ctx.fillRect((px + 1) * S, (py - 1) * S, S, S);
-      }
-    }
-  };
-  for (const fl of bd.floors) {
-    if (fl.kind === 'grass') grass(fl); else tile('floor', fl);
-    const area = layout.areas.find((a) => a.id === fl.id);
-    if (!area) continue;
-    ctx.globalAlpha = 0.25; ctx.fillStyle = toneColor(areaTone(area.id));
-    ctx.fillRect(area.rect.x * S, area.rect.y * S, area.rect.w * S, area.rect.h * S);
-    ctx.globalAlpha = 1;
-  }
-  for (const wl of bd.walls) tile(wl.sprite, wl);
-  for (const p of bd.wallProps) sprite(p.sprite, p.x, p.y);
-  for (const p of bd.partitions) tile('partition', p);
-  // Back to front; small things that sit on a desk are drawn after everything else so the desk does not hide them.
-  const ON_DESK = new Set(['papers', 'calendar', 'pc', 'printer', 'mug', 'coffee', 'trinket', 'flag', 'flagB', 'flagC', 'papersB']);
-  const furn = layout.furniture.map((f) => ({ ...f, r: SPRITES[f.sprite] }))
-    .sort((a, b) => (a.y + a.r.h + (ON_DESK.has(a.sprite) ? 1000 : 0)) - (b.y + b.r.h + (ON_DESK.has(b.sprite) ? 1000 : 0)));
-  for (const f of furn) sprite(f.sprite, f.x, f.y);
-  for (const area of layout.areas) outline(area.rect);
-}
-
-function drawOffice(now = 0, moving = false) {
-  const canvas = $('office-canvas');
-  if (!office) return;
-  fitCanvas();
-  const { areas: AREAS } = layout;
-  const ctx = canvas.getContext('2d');
-  const S = layout.scale, ink = cssVar('--ink');
-  ctx.imageSmoothingEnabled = false;
-  ctx.textBaseline = 'alphabetic';
-  ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
-  const bkey = `${layoutKey}|${document.documentElement.getAttribute('data-theme')}|${atlasOk}`;
-  if (bkey !== backdropKey) { paintBackdrop(); backdropKey = bkey; }
-  ctx.drawImage(backdrop, 0, 0);
-  const nextBoxes = new Map();
-  for (const area of AREAS) {
-    const { x, y, w, h } = area.rect;
-    const lw = ctx.measureText(area.label).width;
-    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(x * S + 2, y * S + 1, lw + 6, 17);
-    drawText(ctx, area.label, x * S + 4, y * S + 12, ink);
-    nextBoxes.set(`area:${area.id}`, { x: x * S, y: y * S, w: w * S, h: h * S });
-  }
-  const marks = officeLandmarks(layout);
-  // Gate terminal: lit while a job is in gate, with the latest verdict.
-  const gate = marks.gate, gr = SPRITES.terminal;
-  if (gate) {
-    ctx.globalAlpha = office.gate.lit ? 0.55 : 0.25;
-    ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
-    ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
-    ctx.globalAlpha = 1;
-  }
-  // Meeting pod and Escalation calendar text sit on `--panel` chips, so they read with or without the atlas.
-  const labelChip = (text, cx, cy, tone) => {
-    const tw = ctx.measureText(text).width + 10;
-    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, cy - 7, tw, 15);
-    ctx.strokeStyle = toneColor(tone); ctx.lineWidth = 2; ctx.strokeRect(cx - tw / 2 + 1, cy - 6, tw - 2, 13);
-    ctx.lineWidth = 1;
-    drawText(ctx, text, cx, cy + 4, ink, 'center');
-  };
-  // Gate terminal text: each line sits on its own opaque `--panel` chip with `--ink` text (AA in both themes, with or
-  // without the atlas); the verdict colour is the chip border. The chips are centered on the sprite and are obstacles.
-  const gateJob = (board.jobs || []).find((j) => j && j.stage === 'gate' && Number.isInteger(j.issue) && j.issue > 0);
-  const verdict = office.gate.result || (office.gate.lit ? 'running' : 'idle');
-  const gateLines = [['GATE', 'muted'], ...(gateJob ? [[`#${gateJob.issue}`, 'active']] : []),
-    [verdict, verdict === 'PASS' ? 'done' : verdict === 'FAIL' ? 'parked' : verdict === 'running' ? 'active' : 'muted']];
-  const gateChips = [];
-  const gcx = gate ? (gate.x + gr.w / 2) * S : 0, gtop = gate ? (gate.y + gr.h / 2) * S - (gateLines.length * 16 - 1) / 2 : 0;
-  if (gate) gateLines.forEach(([text, tone], n) => {
-    const cy = Math.round(gtop + n * 16 + 7);
-    labelChip(text, gcx, cy, tone);
-    const tw = ctx.measureText(text).width + 10;
-    gateChips.push({ x: gcx - tw / 2, y: cy - 7, w: tw, h: 15 });
-  });
-  if (office.meeting && marks.meeting) {
-    const t = marks.meeting, tr = SPRITES[marks.meeting.sprite];
-    labelChip(office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S, 'review');
-  }
-  const esc = marks.escalation, er = SPRITES.calendar;
-  const labels = office.escalation.map((t) => t.label);
-  if (labels.length && esc) {
-    const shown = labels.length > 2 ? [...labels.slice(0, 2), `+${labels.length - 2}`] : labels;
-    labelChip(shown.join(' '), (esc.x + er.w / 2) * S, (esc.y + er.h / 2) * S, 'parked');
-  }
-  // Archive shelf and bin: merged and rejected counts.
-  const shelf = marks.shelf, shr = SPRITES.shelf, bin = marks.bin, br = SPRITES.bin;
-  const chip = (text, cx, y, tone) => {
-    const tw = ctx.measureText(text).width + 10;
-    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, y, tw, 15);
-    ctx.strokeStyle = toneColor(tone); ctx.lineWidth = 2; ctx.strokeRect(cx - tw / 2 + 1, y + 1, tw - 2, 13);
-    ctx.lineWidth = 1;
-    drawText(ctx, text, cx, y + 11, ink, 'center');
-  };
-  const archiveChips = [];
-  for (const [text, f, r, tone] of [[`✓${office.archive.merged}`, shelf, shr, 'done'], [`✗${office.archive.rejected}`, bin, br, 'muted']]) {
-    if (!f) continue;
-    const cx = (f.x + r.w / 2) * S, y = (f.y + r.h) * S + 2, tw = ctx.measureText(text).width + 10;
-    chip(text, cx, y, tone);
-    archiveChips.push({ x: cx - tw / 2, y, w: tw, h: 15 });
-  }
-  // Job folders per area.
-  for (const area of AREAS) {
-    const list = area.id === 'escalation' ? [] : office.tokens[area.id] || [];
-    let x = area.rect.x * S + 4;
-    const y = (area.rect.y + area.rect.h) * S - 17;
-    const right = (area.rect.x + area.rect.w) * S - 4;
-    for (let i = 0; i < list.length; i++) {
-      const t = list[i];
-      const wpx = Math.max(16 * S, ctx.measureText(t.label).width + 8);
-      const more = i < list.length - 1 ? 26 : 0;
-      if (x + wpx + more > right) {
-        const rest = `+${list.length - i}`;
-        const rw = ctx.measureText(rest).width + 8;
-        ctx.fillStyle = cssVar('--panel'); ctx.fillRect(x, y, rw, 14);
-        ctx.strokeStyle = cssVar('--line'); ctx.strokeRect(x + 0.5, y + 0.5, rw - 1, 13);
-        drawText(ctx, rest, x + rw / 2, y + 11, ink, 'center');
-        break;
-      }
-      ctx.fillStyle = '#fcd34d'; ctx.fillRect(x, y, wpx, 14);
-      ctx.fillStyle = '#f59e0b'; ctx.fillRect(x, y - 3, Math.min(wpx, 8), 3);
-      ctx.strokeStyle = '#1f2333'; ctx.strokeRect(x + 0.5, y + 0.5, wpx - 1, 13);
-      drawText(ctx, t.label, x + wpx / 2, y + 11, '#1f2333', 'center');
-      nextBoxes.set(`token:${t.jobId}`, { x, y: y - 3, w: wpx, h: 17 });
-      x += wpx + 4;
-    }
-  }
-  // Characters, back to front, then their bubbles.
-  const order = Object.keys(office.agents).sort((a, b) => walkers.get(a).y - walkers.get(b).y);
-  const bubbles = [];
-  for (const agent of order) {
-    const w = walkers.get(agent), st = office.agents[agent];
-    const r = SPRITES[CHARACTER_FOR[agent]];
-    const bob = moving && w.queue.length && !REDUCED.matches ? Math.floor(now / 140) % 2 : 0;
-    const left = Math.round((w.x - r.w / 2) * S), top = Math.round((w.y - r.h - bob) * S);
-    const color = AVATARS[agent].color;
-    ctx.globalAlpha = 0.45; ctx.fillStyle = color;
-    ctx.fillRect(left, Math.round(w.y * S) - S, r.w * S, S * 2);
-    ctx.globalAlpha = 1;
-    if (atlasOk) ctx.drawImage(atlas, r.x, r.y, r.w, r.h, left, top, r.w * S, r.h * S);
-    else { ctx.fillStyle = color; ctx.fillRect(left + 3 * S, top + 4 * S, (r.w - 6) * S, (r.h - 4) * S); }
-    nextBoxes.set(`agent:${agent}`, { x: left, y: top, w: r.w * S, h: r.h * S });
-    bubbles.push({ agent, text: st.bubble, color, place: st.place, cx: left + (r.w * S) / 2, y: top });
-  }
-  // Panel-colored tags with ink text (readable in both themes); the role color is the border.
-  // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation calendar or the
-  // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
-  // character; with no free slot the tag is omitted (the accessible list still names every agent).
-  const spr = (f, name) => (f ? [{ x: f.x * S, y: f.y * S, w: SPRITES[name].w * S, h: SPRITES[name].h * S }] : []);
-  const obstacles = [...spr(marks.gate, 'terminal'), ...spr(marks.escalation, 'calendar'), ...spr(marks.meeting, marks.meeting?.sprite),
-    ...spr(marks.shelf, 'shelf'), ...spr(marks.bin, 'bin'), ...archiveChips, ...gateChips,
-    ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
-    // Faces only: a tag may cover someone's body but never their head.
-    ...[...nextBoxes].filter(([k]) => k.startsWith('agent:')).map(([, box]) => ({ x: box.x, y: box.y, w: box.w, h: Math.round(box.h * 0.4) })),
-    ...AREAS.map((a) => ({ x: a.rect.x * S + 2, y: a.rect.y * S + 1, w: ctx.measureText(a.label).width + 6, h: 17 }))];
-  const placed = [];
-  const busy = (st) => st !== 'lounge';
-  bubbles.sort((p, q) => (busy(p.place) === busy(q.place) ? p.y - q.y : busy(p.place) ? 1 : -1));
-  for (const b of bubbles) {
-    if (b.place === 'lounge') {
-      // Idle: a short tag over the torso, so the face stays visible and each tag stays in its own cell.
-      b.text = SHORT[b.agent];
-      const w = walkers.get(b.agent);
-      const box = idleTagBox({ x: w.x, y: w.y }, b.agent, S, ctx.measureText(b.text).width);
-      if (!box) continue;
-      b.w = box.w;
-      b.x = Math.min(Math.max(0, box.x), canvas.width - b.w); b.by = box.y;
-      placed.push(b);
-      ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
-      ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.by + 1, b.w - 2, 13);
-      ctx.lineWidth = 1;
-      drawText(ctx, b.text, b.x + b.w / 2, b.by + 11, ink, 'center');
-      continue;
-    }
-    b.w = ctx.measureText(b.text).width + 10;
-    const free = (x, y) => y >= 0 && y + 15 <= canvas.height && x >= 0 && x + b.w <= canvas.width &&
-      !placed.some((o) => !(y + 15 <= o.by || o.by + 15 <= y || x + b.w <= o.x || o.x + o.w <= x)) &&
-      !obstacles.some((o) => !(y + 15 <= o.y || o.y + o.h <= y || x + b.w <= o.x || o.x + o.w <= x));
-    const home = b.y - 18, x0 = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w);
-    const shift = b.w / 2 + 24;
-    let spot = null;
-    for (let d = 0; d <= 72 && !spot; d += 4) {
-      for (const dy of d ? [-d, d] : [0]) {
-        for (const dx of [0, -shift, shift]) {
-          const x = Math.min(Math.max(0, x0 + dx), canvas.width - b.w);
-          if (free(x, Math.max(0, home + dy))) { spot = { x, y: Math.max(0, home + dy) }; break; }
-        }
-        if (spot) break;
-      }
-    }
-    if (!spot) continue;
-    b.x = spot.x; b.by = spot.y;
-    placed.push(b);
-    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
-    ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.by + 1, b.w - 2, 13);
-    ctx.lineWidth = 1;
-    drawText(ctx, b.text, b.x + b.w / 2, b.by + 11, ink, 'center');
-  }
-  boxes = nextBoxes;
-  placeHits();
-}
-
-function placeHits() {
-  for (const btn of hits.children) {
-    const box = boxes.get(btn.dataset.box);
-    btn.hidden = !box;
-    if (!box) continue;
-    btn.style.left = Math.round(box.x) + 'px'; btn.style.top = Math.round(box.y) + 'px';
-    btn.style.width = Math.round(box.w) + 'px'; btn.style.height = Math.round(box.h) + 'px';
-  }
-}
-
-function renderOffice() {
-  office = officeState(board.jobs);
-  fitCanvas();
-  const targets = hitTargets(office, board.jobs);
-  const key = JSON.stringify(targets);
-  if (key !== officeKey) {
-    officeKey = key;
-    // Patch buttons in place (keyed by data-box) so keyboard focus and the drawer's return target survive polls.
-    const existing = new Map([...hits.children].map((b) => [b.dataset.box, b]));
-    const keep = new Set();
-    for (const t of targets) {
-      const id = `${t.kind}:${t.key}`;
-      let btn = existing.get(id);
-      if (!btn) {
-        btn = document.createElement('button');
-        btn.type = 'button';
-        btn.dataset.box = id;
-        hits.appendChild(btn);
-      }
-      keep.add(id);
-      btn.className = `hit hit-${t.kind}`;
-      btn.dataset.id = t.jobId;
-      btn.setAttribute('aria-label', t.label);
-      btn.setAttribute('title', t.label);
-    }
-    for (const [id, btn] of existing) if (!keep.has(id)) btn.remove();
-  }
-  const lines = describeOffice(office);
-  const text = lines.join('\n');
-  if (text !== liveKey) {
-    liveKey = text;
-    $('office-live').replaceChildren(...lines.map((l) => { const li = document.createElement('li'); li.textContent = l; return li; }));
-  }
-  syncWalkers();
-  drawOffice();
-  kick();
-}
-
-hits.addEventListener('click', (e) => {
-  const btn = e.target.closest('.hit');
-  if (btn) openDrawer(btn.dataset.id);
+const officeView = createOffice({
+  stage: $('office-stage'), canvas: $('office-canvas'), hits: $('office-hits'),
+  live: $('office-live'), status: $('office-status'), openJob: (id) => openDrawer(id),
 });
-$('office-stage').addEventListener('scroll', () => drawOffice());
-if (typeof ResizeObserver === 'function') new ResizeObserver(() => drawOffice()).observe($('office-stage'));
-else window.addEventListener('resize', () => drawOffice());
-new MutationObserver(() => { toneCache = null; drawOffice(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+function renderOffice() { officeView.update(board.jobs); }
 renderStats();
 renderOffice();
 

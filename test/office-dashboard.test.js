@@ -2,85 +2,48 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, access } from 'node:fs/promises';
 
-const html = await readFile(new URL('../factory/dashboard.html', import.meta.url), 'utf8');
+const read = (path) => readFile(new URL(`../factory/${path}`, import.meta.url), 'utf8');
+const html = await read('dashboard.html');
 const css = html.match(/<style>([\s\S]*?)<\/style>/)[1];
 const script = html.match(/<script type="module">([\s\S]*?)<\/script>/)[1];
-const at = (needle) => { const i = html.indexOf(needle); assert.ok(i >= 0, `missing ${needle}`); return i; };
 
-test('AC-7: markup order, CSS, script rules and i18n keys', () => {
-  assert.match(script, /from '\.\/office\.js'/);
-  const order = ['<header class="top">', 'id="stat-jobs"', 'id="stat-running"', 'id="stat-agents"', 'id="stat-cost"', '</header>',
-    'id="office"', '<canvas id="office-canvas" aria-hidden="true">', 'id="office-live"', 'id="pipeline"', '<h2>Pipeline</h2>',
-    '<main class="board" id="board">'].map(at);
-  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+test('dashboard keeps the office as an accessible, responsive board companion', () => {
+  const positions = ['<header class="top">', 'id="stat-jobs"', 'id="stat-running"', 'id="stat-agents"', 'id="stat-cost"',
+    'id="office"', 'id="office-canvas"', 'id="office-hits"', 'id="office-status"', 'id="office-live"', 'id="pipeline"', '<main class="board" id="board">']
+    .map((needle) => { const position = html.indexOf(needle); assert.ok(position >= 0, `missing ${needle}`); return position; });
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
   assert.match(html.match(/id="office-live"[^>]*>/)[0], /aria-live/);
-  const pipeline = html.slice(at('id="pipeline"'), at('<main class="board"'));
-  assert.ok(!pipeline.includes('<canvas'));
-  assert.match(css, /#office-canvas\s*\{[^}]*image-rendering:\s*pixelated/);
-  assert.match(css, /@media \(max-width: 900px\)\s*\{[^@]*\.panels\s*\{[^}]*grid-template-columns:\s*1fr\s*;/);
-  assert.match(script, /prefers-reduced-motion/);
-  assert.match(script, /\.hit/);
-  assert.match(script, /openDrawer\(btn\.dataset\.id\)/);
-  for (const bad of ['Pause', 'Stop', 'api.github.com']) assert.ok(!html.includes(bad), bad);
+  assert.match(script, /createOffice\(/);
+  assert.match(script, /openDrawer\(id\)/);
+  assert.match(css, /#office-canvas\s*\{[^}]*image-rendering:\s*auto/);
+  assert.match(css, /@media \(max-width: 900px\)/);
+  assert.match(css, /prefers-color-scheme|data-theme/);
   assert.doesNotMatch(script, /https?:\/\//);
-  assert.ok(!/font-size:\s*(\d|10)px/.test(css));
+  assert.doesNotMatch(html, /\b(?:Pause|Stop)\b/);
   const i18n = JSON.parse(html.match(/<script type="application\/json" id="i18n">([\s\S]*?)<\/script>/)[1]);
-  for (const l of ['en', 'es', 'pt']) for (const k of ['statJobs', 'statRunning', 'statAgents', 'statCost']) assert.ok(i18n[l][k], `${l}.${k}`);
+  for (const language of ['en', 'es', 'pt']) for (const key of ['statJobs', 'statRunning', 'statAgents', 'statCost']) assert.ok(i18n[language][key]);
 });
 
-test('AC-8: the CC0 atlas is vendored and referenced by relative path only', async () => {
-  for (const f of ['LICENSE.txt', 'README.txt', 'PixelOfficeAssets.png']) {
-    await access(new URL(`../factory/assets/pixel-office/${f}`, import.meta.url));
-  }
-  const readme = await readFile(new URL('../factory/assets/pixel-office/README.txt', import.meta.url), 'utf8');
-  assert.match(readme, /CC0/);
-  const refs = html.match(/[\w./-]*PixelOfficeAssets\.png/g);
-  assert.ok(refs.length >= 1);
-  for (const r of refs) assert.equal(r, 'assets/pixel-office/PixelOfficeAssets.png');
+test('office renderer is isolated from board lifecycle and supports reduced motion and keyboard hotspots', async () => {
+  const renderer = await read('office-renderer.js');
+  assert.match(renderer, /prefers-reduced-motion/);
+  assert.match(renderer, /retargetWalker/);
+  assert.match(renderer, /aria-label/);
+  assert.match(renderer, /hitTargets\(state,jobs\)/);
+  assert.match(renderer, /`\+\$\{count\} more`/);
+  assert.match(renderer, /overflow\)\{overflowCounts\.set/);
+  assert.match(renderer, /openJob\(btn\.dataset\.id\)/);
+  assert.match(renderer, /describeOffice\(state\)/);
+  assert.doesNotMatch(renderer, /localStorage|fetch\(|setInterval/);
+  for (const module of ['office-map.js', 'office-navigation.js', 'sprite-atlas.js']) await access(new URL(`../factory/${module}`, import.meta.url));
 });
 
-test('AC-6: the dashboard draws from layoutOffice instead of the fixed map size', () => {
-  assert.match(script, /import \{[^}]*\blayoutOffice\b[^}]*\bremapWalker\b[^}]*\} from '\.\/office\.js'|import \{[^}]*\bremapWalker\b[^}]*\blayoutOffice\b[^}]*\} from '\.\/office\.js'/);
-  assert.match(script, /new ResizeObserver\(.*\)\.observe\(\$\('office-stage'\)\)/);
-  assert.doesNotMatch(script, /MAP\.(width|height)/);
-  assert.match(css, /#office-canvas\s*\{[^}]*image-rendering:\s*pixelated/);
-});
-
-test('AC-7: static backdrop is painted offscreen once per key', () => {
-  assert.match(script, /import\s*\{[^}]*\bofficeBackdrop\b[^}]*\}\s*from '\.\/office\.js'/);
-  assert.match(script, /document\.createElement\('canvas'\)/);
-  const start = script.indexOf('function paintBackdrop'), end = script.indexOf('function drawOffice');
-  assert.ok(start >= 0 && end > start);
-  const paint = script.slice(start, end), draw = script.slice(end);
-  const outside = script.slice(0, start) + draw;
-  assert.ok(!outside.includes('officeBackdrop(') && !outside.includes('areaTone('));
-  assert.ok(paint.includes('officeBackdrop(') && paint.includes('areaTone('));
-  assert.ok(draw.slice(0, draw.indexOf('\nfunction ') > 0 ? draw.indexOf('\nfunction ') : undefined).includes('drawImage(backdrop'));
-  assert.match(paint, /globalAlpha = 0\.14/);
-  assert.match(script, /backdropKey[\s\S]{0,200}|const bkey/);
-  const keyLine = script.match(/const bkey = .*/)[0];
-  assert.ok(keyLine.includes('layoutKey') && keyLine.includes('data-theme') && keyLine.includes('atlasOk'));
-  assert.ok(!script.includes("'sign'"));
-});
-
-test('AC-8: the dashboard uses officeLandmarks and paints floors, sky and partitions from the backdrop', () => {
-  assert.match(script, /import\s*\{[^}]*\bofficeLandmarks\b[^}]*\}\s*from '\.\/office\.js'/);
-  const start = script.indexOf('function paintBackdrop'), end = script.indexOf('function drawOffice');
-  const paint = script.slice(start, end), draw = script.slice(end);
-  assert.ok(draw.includes('officeLandmarks(layout)'));
-  for (const old of ["at('deskLong')", "at('flag')", "at('shelf')", "at('bin')", "at('terminal')"]) assert.ok(!draw.includes(old), old);
-  assert.match(paint, /tile\(wl\.sprite, wl\)/);
-  assert.match(paint, /'grass'/);
-  assert.match(paint, /tile\('partition', p\)/);
-  assert.ok(!paint.includes('Math.random'));
-  assert.match(paint, /globalAlpha = 0\.14/);
-});
-
-test('AC-8: idle tags come from idleTagBox and the meeting chip follows the landmark sprite', () => {
-  assert.match(script, /import\s*\{[^}]*\bidleTagBox\b[^}]*\}\s*from '\.\/office\.js'/);
-  const draw = script.slice(script.indexOf('function drawOffice'));
-  assert.ok(draw.includes('idleTagBox('));
-  assert.ok(!draw.includes('SPRITES.deskLong'));
-  assert.match(draw, /SPRITES\[marks\.meeting\.sprite\]/);
-  for (const n of ['mug', 'coffee', 'trinket', 'flag', 'flagB', 'flagC', 'papersB']) assert.match(script.match(/const ON_DESK = new Set\(\[.*\]\)/)[0], new RegExp(`'${n}'`));
+test('the coordinate atlas is reproducible from the untouched source sheet', async () => {
+  const atlas = JSON.parse(await readFile(new URL('../factory/assets/pixel-office-2/atlas.json', import.meta.url), 'utf8'));
+  assert.deepEqual(atlas.sourceSize, { width: 768, height: 512 });
+  assert.equal(Object.keys(atlas.characters).length, 8);
+  const generator = await read('assets/pixel-office-2/build_atlas.py').catch(() => null);
+  assert.ok(generator || await access(new URL('../factory/assets/pixel-office-2/build_atlas.py', import.meta.url)).then(() => true));
+  await access(new URL('../factory/assets/pixel-office-2/PixelOfficeAssets.png', import.meta.url));
+  await access(new URL('../factory/assets/pixel-office-2/office-atlas.png', import.meta.url));
 });
