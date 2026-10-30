@@ -47,7 +47,9 @@ Factory no inventa tarifas para los aliases locales `gpt-6-*`.
   Se valida tanto `session_meta.cwd` como cada `turn_context.cwd` presente;
   un contexto de otro worktree invalida el total, incluso si la sesión comenzó
   en el worktree correcto. También se conserva evidencia de sesiones que entran
-  al repositorio después de iniciarse fuera de él.
+  al repositorio después de iniciarse fuera de él, incluido el checkout principal
+  con contrato del job; esa evidencia invalida cualquier subtotal conocido de
+  otras sesiones dedicadas del mismo job.
   No se hereda el consumo de un orquestador padre que pueda manejar varios jobs.
 - Los snapshots acumulativos se deduplican por ID de sesión, incluso entre copias
   de archivos. Los deltas se valoran con el modelo activo en cada respuesta.
@@ -68,7 +70,9 @@ Un costo verificable usa `cost_status: "available"`, `cost_reason: null` y un
 `no_associated_usage`, `ambiguous_session`, `missing_model`, `missing_price` o
 `invalid_usage`. Un costo parcial desconocido invalida el total del job.
 
-Dashboard y summary muestran `Cost unavailable`; los agregados señalan que son
+El dashboard localiza el estado de costo no disponible, las indicaciones y los
+agregados en `en`, `es` y `pt` según `board.language`. El CLI conserva
+`Cost unavailable`. Los agregados señalan que son
 subtotales conocidos y cuántos costos faltan. Los jobs Codex antiguos sin estado
 se presentan como desconocidos hasta sincronizarlos. No se persisten prompts,
 salidas de herramientas, secretos ni texto del rollout. Las tarjetas incluyen una
@@ -82,4 +86,6 @@ motivos desconocidos no se interpolan en el HTML.
 están en `test/codex-cost.test.js`, también protegido. Ejecutá `factory/checks.sh`
 con Node 20, el runtime documentado del proyecto. Las regresiones de la segunda
 revisión están en `test/codex-cost-review.test.js`; cubren forks con ID distinto,
-continuaciones entre worktrees, contratos citados y paridad de sync/summary/board.
+continuaciones entre worktrees, entrada al checkout principal desde fuera del
+repositorio, contratos citados, paridad de sync/summary/board y localización de
+tarjetas, indicaciones accesibles, detalles del pipeline y agregados.

@@ -525,6 +525,14 @@
 <script type="application/json" id="i18n">
 {
   "en": {
+    "costUnavailable": "Cost unavailable",
+    "costUnavailableCount": "{n} unavailable",
+    "costHintDefault": "Sync this job to check cost availability.",
+    "costHint_missing_price": "Configure exact-model Codex prices in factory/config.json, then sync.",
+    "costHint_missing_model": "Check the rollout model metadata, then sync.",
+    "costHint_no_associated_usage": "Run a dedicated job worker, then sync after usage is recorded.",
+    "costHint_ambiguous_session": "Use a dedicated, unforked session for this job; shared usage cannot be priced safely.",
+    "costHint_invalid_usage": "Check rollout usage counters, then sync with valid data.",
     "pipelineJob": "Job", "pipelineStage": "Stage", "pipelineStages": "Pipeline stages", "pipelineNoJobs": "No jobs available",
     "pipelineAvailable": "Available", "pipelineChecking": "Checking…", "pipelineUnavailable": "Not available", "pipelineNotWritten": "Not written yet",
     "pipelineActive": "Active", "pipelinePending": "Pending", "pipelineComplete": "Complete", "pipelineBlocked": "Blocked", "pipelineStagesSuffix": "stages",
@@ -550,6 +558,14 @@
     "statCost": "Cost"
   },
   "es": {
+    "costUnavailable": "Costo no disponible",
+    "costUnavailableCount": "{n} no disponibles",
+    "costHintDefault": "Sincronice este job para comprobar la disponibilidad del costo.",
+    "costHint_missing_price": "Configure los precios Codex por modelo exacto en factory/config.json y sincronice.",
+    "costHint_missing_model": "Revise los metadatos del modelo en el rollout y sincronice.",
+    "costHint_no_associated_usage": "Ejecute un worker dedicado al job y sincronice cuando se registre el uso.",
+    "costHint_ambiguous_session": "Use una sesión dedicada sin fork para este job; el uso compartido no se puede valorar de forma segura.",
+    "costHint_invalid_usage": "Revise los contadores de uso del rollout y sincronice con datos válidos.",
     "pipelineJob": "Job", "pipelineStage": "Etapa", "pipelineStages": "Etapas del pipeline", "pipelineNoJobs": "No hay jobs disponibles",
     "pipelineAvailable": "Disponible", "pipelineChecking": "Verificando…", "pipelineUnavailable": "No disponible", "pipelineNotWritten": "Todavía no está escrito",
     "pipelineActive": "Activa", "pipelinePending": "Pendiente", "pipelineComplete": "Completada", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
@@ -575,6 +591,14 @@
     "statCost": "Costo"
   },
   "pt": {
+    "costUnavailable": "Custo indisponível",
+    "costUnavailableCount": "{n} indisponíveis",
+    "costHintDefault": "Sincronize este job para verificar a disponibilidade do custo.",
+    "costHint_missing_price": "Configure os preços Codex por modelo exato em factory/config.json e sincronize.",
+    "costHint_missing_model": "Verifique os metadados do modelo no rollout e sincronize.",
+    "costHint_no_associated_usage": "Execute um worker dedicado ao job e sincronize após o registro de uso.",
+    "costHint_ambiguous_session": "Use uma sessão dedicada sem fork para este job; o uso compartilhado não pode ser calculado com segurança.",
+    "costHint_invalid_usage": "Verifique os contadores de uso do rollout e sincronize com dados válidos.",
     "pipelineJob": "Job", "pipelineStage": "Etapa", "pipelineStages": "Etapas do pipeline", "pipelineNoJobs": "Nenhum job disponível",
     "pipelineAvailable": "Disponível", "pipelineChecking": "Verificando…", "pipelineUnavailable": "Indisponível", "pipelineNotWritten": "Ainda não foi escrito",
     "pipelineActive": "Ativa", "pipelinePending": "Pendente", "pipelineComplete": "Concluída", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
@@ -663,7 +687,7 @@ function card(job) {
       ${issue ? `<code class="cmd">/factory rework ${esc(issue)}</code>` : ''}` : ''}
     ${job.stage === 'awaiting-merge' ? `<span class="hint">${T.hintAwaitingMerge}</span>` : ''}
     ${job.stage === 'needs-info' && !job.note ? `<span class="hint">${T.hintNeedsInfo}</span>` : ''}
-    <div class="meta"><span class="cost-time">${costTimeHtml(job)}</span>
+    <div class="meta"><span class="cost-time">${costTimeHtml(job, undefined, T)}</span>
       <span class="when">${job.round ? `round ${esc(job.round)}/${esc(job.max_rounds ?? 3)} · ` : ''}${ago(job.updated)}</span></div>
   </article>`;
 }
@@ -684,7 +708,7 @@ function render() {
     let body = list.map(card).join('');
     if (key === 'merged') {
       const { recent, older } = splitMerged(list);
-      body = recent.map(card).join('') + olderMergedHtml(older, T.olderMerged.replace('{n}', older.length), olderOpen);
+      body = recent.map(card).join('') + olderMergedHtml(older, T.olderMerged.replace('{n}', older.length), olderOpen, undefined, T);
     }
     return `<section class="col tone-${laneTone(key)} ${ALERT.has(key) && list.length ? 'alert' : ''} ${list.length ? '' : 'quiet'}" id="col-${esc(key)}" aria-label="${esc(label)}">
       <h2><span class="dot" aria-hidden="true"></span><span class="lane-title">${label}</span><span class="count">${list.length}</span></h2>
@@ -763,7 +787,7 @@ function renderPipeline() {
     $('pipeline-inspector').innerHTML = `<p class="pipeline-missing">${escapeHTML(T.pipelineNoJobs)}</p>`;
     return;
   }
-  const details = stageDetails(selectedJob, stageSelect.value);
+  const details = stageDetails(selectedJob, stageSelect.value, undefined, T);
   const localizedStatus = stateLabel(details.status.toLowerCase());
   const localizedProgress = details.progress.replace(/ stages$/, ` ${T.pipelineStagesSuffix}`).replace('Not available', T.pipelineUnavailable);
   const stageValueKey = `pipelineStage${details.stage.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('')}`;
@@ -989,7 +1013,7 @@ function md(src) {
 function renderStats() {
   const s = headerStats(board.jobs);
   const tiles = { 'stat-jobs': [s.total, T.statJobs], 'stat-running': [s.running, T.statRunning],
-    'stat-agents': [s.agents, T.statAgents], 'stat-cost': [formatCost(s.cost, s.cost_unavailable), T.statCost] };
+    'stat-agents': [s.agents, T.statAgents], 'stat-cost': [s.cost_unavailable ? formatCost(s.cost, s.cost_unavailable, T) : formatCost(s.cost, s.cost_unavailable), T.statCost] };
   for (const [id, [value, label]] of Object.entries(tiles)) {
     const tile = $(id);
     tile.querySelector('.v').textContent = loaded ? String(value) : '–';

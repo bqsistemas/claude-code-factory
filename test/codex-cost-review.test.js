@@ -1,4 +1,4 @@
-// Round-2 regressions; previously protected cost tests remain untouched.
+// Review regressions; previously protected cost tests remain untouched.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -7,7 +7,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { codexJobCost, readCodexRollouts } from '../factory/lib/cost.js';
-import { costTimeHtml } from '../factory/activity.js';
+import { costLabel, costTimeHtml, olderMergedHtml } from '../factory/activity.js';
+import { formatCost, headerStats } from '../factory/office.js';
+import { stageDetails } from '../factory/pipeline-canvas.js';
 
 const root = '/repo';
 const job = { id: '034-cost', provider: 'codex', worktree: '/repo/.worktrees/034-cost' };
@@ -167,4 +169,94 @@ test('AC-6: unavailable card hints explain the reason and next step without expo
     assert.match(html, /Sync this job to check cost availability/);
   }
   assert.match(costTimeHtml({ provider: 'claude', cost_usd: 0 }), /title="cost">\$0\.00/);
+});
+
+
+test('AC-3/AC-4: a job contract plus later root context retains mixed outside-origin sessions', () => {
+  const dedicated = rollout([context(), snapshot()], { id: 'dedicated' });
+  const shared = rollout([context('/outside-repo'), snapshot(100, 10), prompt(assignment),
+    context(root), snapshot(1100, 110)], { id: 'mixed', cwd: '/outside-repo' });
+  assert.equal(calculate([dedicated]).cost_usd, 0.014);
+  for (const sources of [[dedicated, shared], [shared, dedicated], [dedicated, shared, shared]]) {
+    unknown(calculate(sources));
+  }
+  unknown(calculate([shared]));
+  // Entering a different job, without this job's contract, is still unrelated.
+  const unrelated = rollout([context('/outside-repo'), snapshot(100, 10),
+    prompt(assignment.replaceAll(job.id, '999-other')), context(root), snapshot()], {
+    id: 'unrelated', cwd: '/outside-repo',
+  });
+  assert.equal(calculate([dedicated, unrelated]).cost_usd, 0.014);
+});
+
+test('AC-4/AC-7: repeated sync and summary never publish a partial cost after outside-to-root usage', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'factory-cost-root-review-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const base = join(dir, 'repo'), sessions = join(dir, 'sessions');
+  const worktree = join(base, '.worktrees', job.id);
+  const write = (file, value) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, value); };
+  const read = (file) => JSON.parse(readFileSync(file, 'utf8'));
+  const jobFile = join(base, 'factory/jobs', job.id, 'job.json');
+  write(jobFile, JSON.stringify({ ...job, worktree, stage: 'build', round: 3, reviews: {} }));
+  write(join(base, 'factory/config.json'), JSON.stringify({ providers: { codex: { prices } } }));
+  write(join(sessions, 'dedicated.jsonl'), rollout([context(worktree), snapshot()], { id: 'dedicated', cwd: worktree }));
+  const cli = (...args) => spawnSync(fileURLToPath(new URL('../factory/bin/job', import.meta.url)), args, {
+    encoding: 'utf8', env: { ...process.env, FACTORY_ROOT: base, FACTORY_CODEX_SESSIONS: sessions },
+  });
+  assert.equal(cli(job.id, 'sync').status, 0);
+  assert.equal(read(jobFile).cost_usd, 0.014, 'initial dedicated usage is known');
+  write(join(sessions, 'mixed.jsonl'), rollout([context('/outside-repo'), snapshot(100, 10),
+    prompt(assignment), context(base), snapshot(1100, 110)], { id: 'mixed', cwd: '/outside-repo' }));
+  assert.equal(readCodexRollouts(sessions, base).length, 2, 'both sessions survive discovery');
+  for (let i = 0; i < 2; i++) {
+    const result = cli(job.id, 'sync');
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Cost unavailable/);
+    const actual = read(jobFile);
+    unknown({ cost_usd: actual.cost_usd, cost_status: actual.cost_status, cost_reason: actual.cost_reason });
+    assert.deepEqual(read(join(base, 'factory/board.json')).jobs[0], actual);
+    const summary = cli('summary');
+    assert.equal(summary.status, 0, summary.stderr);
+    assert.match(summary.stdout, /Cost unavailable/);
+    assert.doesNotMatch(summary.stdout, /\$0\.(00|01)/);
+    const stats = headerStats([actual]);
+    assert.equal(stats.cost_unavailable, 1);
+    assert.equal(formatCost(stats.cost, stats.cost_unavailable), 'Cost unavailable');
+  }
+});
+
+test('AC-6: dashboard cost labels, reason hints, pipeline and totals follow en/es/pt dictionaries', () => {
+  const html = readFileSync(new URL('../factory/dashboard.html', import.meta.url), 'utf8');
+  const dictionaries = JSON.parse(html.match(/<script type="application\/json" id="i18n">([\s\S]*?)<\/script>/)[1]);
+  const labels = { en: 'Cost unavailable', es: 'Costo no disponible', pt: 'Custo indisponível' };
+  const reasons = ['missing_price', 'missing_model', 'no_associated_usage', 'ambiguous_session', 'invalid_usage'];
+  for (const [lang, text] of Object.entries(dictionaries)) {
+    assert.equal(text.costUnavailable, labels[lang]);
+    const unknownJob = { ...job, cost_status: 'unavailable', cost_usd: null };
+    assert.equal(costLabel(unknownJob, text), labels[lang]);
+    assert.ok(olderMergedHtml([unknownJob], 'older', false, 0, text).includes(labels[lang]));
+    assert.equal(stageDetails(unknownJob, 'build', 0, text).cost, labels[lang]);
+    assert.equal(formatCost(0, 2, text), labels[lang]);
+    assert.equal(formatCost(2, 2, text), `$2.00 + ${text.costUnavailableCount.replace('{n}', '2')}`);
+    for (const reason of reasons) {
+      const card = costTimeHtml({ ...unknownJob, cost_reason: reason }, 0, text);
+      const hint = text[`costHint_${reason}`];
+      assert.ok(hint && hint.trim(), `${lang}: ${reason} hint`);
+      assert.ok(card.includes(hint), `${lang}: ${reason}`);
+      assert.ok(card.includes(`aria-label="${labels[lang]}. `));
+      assert.doesNotMatch(card, /\$0\.00/);
+      if (lang !== 'en') assert.notEqual(hint, dictionaries.en[`costHint_${reason}`]);
+    }
+    for (const cost_reason of ['<img src=x onerror=alert(1)>', '__proto__', { toString: null }, null]) {
+      const card = costTimeHtml({ ...unknownJob, cost_reason }, 0, text);
+      assert.ok(card.includes(text.costHintDefault));
+      assert.doesNotMatch(card, /img|onerror/);
+    }
+    assert.match(costTimeHtml({ provider: 'claude', cost_usd: 0 }, 0, text), /title="cost">\$0\.00/);
+    assert.equal(formatCost(0, 0, text), '$0.00');
+  }
+  assert.match(html, /costTimeHtml\(job, undefined, T\)/);
+  assert.match(html, /olderMergedHtml\(older, T.olderMerged.replace\('\{n\}', older.length\), olderOpen, undefined, T\)/);
+  assert.match(html, /stageDetails\(selectedJob, stageSelect.value, undefined, T\)/);
+  assert.match(html, /formatCost\(s.cost, s.cost_unavailable, T\)/);
 });

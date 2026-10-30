@@ -169,7 +169,7 @@ export function codexJobCost(rollouts, job, prices, root) {
   for (const copies of sessions.values()) {
     const relevant = copies.some((r) => within(r.meta.cwd, worktree)
       || r.cwds.some((cwd) => within(cwd, worktree))
-      || (within(r.meta.cwd, root) && r.jobs.includes(job.id)));
+      || (r.jobs.includes(job.id) && [r.meta.cwd, ...r.cwds].some((cwd) => within(cwd, root))));
     if (!relevant) continue;
     // A duplicate/resumed session must retain the same dedicated association.
     for (const r of copies) {

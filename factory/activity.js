@@ -150,32 +150,45 @@ export function costAvailable(job) {
     && typeof job?.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
 }
 
-export function costLabel(job) {
-  if (job?.cost_status === 'unavailable' || (job?.provider === 'codex' && !costAvailable(job))) return 'Cost unavailable';
+// English defaults preserve CLI and existing helper callers. The dashboard
+// supplies its selected, fixed en/es/pt dictionary; no rollout text is emitted.
+export const COST_TEXT_EN = Object.freeze({
+  costUnavailable: 'Cost unavailable',
+  costUnavailableCount: '{n} unavailable',
+  costHintDefault: 'Sync this job to check cost availability.',
+  costHint_missing_price: 'Configure exact-model Codex prices in factory/config.json, then sync.',
+  costHint_missing_model: 'Check the rollout model metadata, then sync.',
+  costHint_no_associated_usage: 'Run a dedicated job worker, then sync after usage is recorded.',
+  costHint_ambiguous_session: 'Use a dedicated, unforked session for this job; shared usage cannot be priced safely.',
+  costHint_invalid_usage: 'Check rollout usage counters, then sync with valid data.',
+});
+const COST_HINT_KEYS = Object.freeze({
+  missing_price: 'costHint_missing_price', missing_model: 'costHint_missing_model',
+  no_associated_usage: 'costHint_no_associated_usage', ambiguous_session: 'costHint_ambiguous_session',
+  invalid_usage: 'costHint_invalid_usage',
+});
+const unknownCost = (job) => job?.cost_status === 'unavailable' || (job?.provider === 'codex' && !costAvailable(job));
+
+export function costLabel(job, text = COST_TEXT_EN) {
+  if (unknownCost(job)) return text.costUnavailable ?? COST_TEXT_EN.costUnavailable;
   return costAvailable(job) ? `$${job.cost_usd.toFixed(2)}` : DASH;
 }
-
-const COST_HINTS = Object.freeze({
-  missing_price: 'Configure exact-model Codex prices in factory/config.json, then sync.',
-  missing_model: 'Check the rollout model metadata, then sync.',
-  no_associated_usage: 'Run a dedicated job worker, then sync after usage is recorded.',
-  ambiguous_session: 'Use a dedicated, unforked session for this job; shared usage cannot be priced safely.',
-  invalid_usage: 'Check rollout usage counters, then sync with valid data.',
-});
 
 /**
  * Cost and elapsed time for a card: `$1.84` and the time from `started` to
  * `finished` (or `now`). Missing or invalid values render as '—'.
  * @param {unknown} job a board.json job
  * @param {number|Date} [now]
+ * @param {object} [text] selected dashboard dictionary (English by default)
  * @returns {string}
  */
-export function costTimeHtml(job, now = Date.now()) {
+export function costTimeHtml(job, now = Date.now(), text = COST_TEXT_EN) {
   const j = isObject(job) ? job : {};
-  const cost = costLabel(j);
-  const reason = typeof j.cost_reason === 'string' && Object.hasOwn(COST_HINTS, j.cost_reason)
-    ? COST_HINTS[j.cost_reason] : 'Sync this job to check cost availability.';
-  const hint = cost === 'Cost unavailable' ? `Cost unavailable. ${reason}` : null;
+  const cost = costLabel(j, text);
+  const key = typeof j.cost_reason === 'string' && Object.hasOwn(COST_HINT_KEYS, j.cost_reason)
+    ? COST_HINT_KEYS[j.cost_reason] : 'costHintDefault';
+  const reason = text[key] ?? COST_TEXT_EN[key];
+  const hint = unknownCost(j) ? `${cost}. ${reason}` : null;
   const start = typeof j.started === 'string' ? Date.parse(j.started) : NaN;
   const end = typeof j.finished === 'string' ? Date.parse(j.finished) : Number(now);
   return `<span class="cost" title="${esc(hint ?? 'cost')}"${hint ? ` aria-label="${esc(hint)}"` : ''}>${esc(cost)}</span>` +
@@ -232,13 +245,13 @@ export function roundsOf(job) {
 }
 
 /** Collapsed "+N older" group of one-line rows that open the drawer. Every value is escaped. */
-export function olderMergedHtml(jobs, label, open, now = Date.now()) {
+export function olderMergedHtml(jobs, label, open, now = Date.now(), text = COST_TEXT_EN) {
   if (!Array.isArray(jobs) || !jobs.length) return '';
   const rows = jobs.map((j) => {
     const title = esc(j?.title || j?.id);
     const rounds = roundsOf(j);
     const meta = (rounds.length ? `<span class="n">R${rounds.length}</span>${roundChipsHtml(rounds[rounds.length - 1])}` : '') +
-      `<span class="cost-time">${costTimeHtml(j, now)}</span><span class="when">${esc(ago(j?.updated, now))}</span>`;
+      `<span class="cost-time">${costTimeHtml(j, now, text)}</span><span class="when">${esc(ago(j?.updated, now))}</span>`;
     return `<li><button type="button" class="row" data-id="${esc(j?.id)}" title="${title}">` +
       `<span class="id">${esc(j?.id)}</span> <span class="row-title">${title}</span>` +
       `<span class="row-meta" aria-hidden="true">${meta}</span></button></li>`;

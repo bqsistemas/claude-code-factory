@@ -71,7 +71,7 @@ test('AC-3: olderMergedHtml renders escaped one-line rows', () => {
 test('AC-4: dashboard wires the older group, row clicks and toggle capture', () => {
   assert.match(script, /import \{[^}]*\bsplitMerged\b[^}]*\bolderMergedHtml\b[^}]*\} from '\.\/activity\.js'|import \{[^}]*\bolderMergedHtml\b[^}]*\bsplitMerged\b[^}]*\} from '\.\/activity\.js'/);
   assert.match(renderBody, /splitMerged\(/);
-  assert.match(renderBody, /olderMergedHtml\(older, T\.olderMerged\.replace\([^\n]*olderOpen\)/);
+  assert.match(renderBody, /olderMergedHtml\(older, T\.olderMerged\.replace\([^\n]*olderOpen, undefined, T\)/);
   assert.match(script, /closest\('\.card, \.row'\)/);
   assert.match(script, /addEventListener\('toggle'[\s\S]*?olderOpen = [\s\S]*?,\s*true\)/);
   assert.match(rule('.row:focus-visible'), /outline/);

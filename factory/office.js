@@ -1,5 +1,5 @@
 // Pure projection of the existing board jobs. No independent lifecycle or persistence.
-import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone, costAvailable } from './activity.js';
+import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone, costAvailable, COST_TEXT_EN } from './activity.js';
 import { AREAS, MAP, WAYPOINTS, SEATS, LOUNGE_SPOTS, MEETING_SEATS, SHORT } from './office-map.js';
 export { AREAS, MAP, WAYPOINTS, SEATS, LOUNGE_SPOTS, MEETING_SEATS, FURNITURE, WALL_H, PARTITION, DOOR_W, layoutOffice, officeBackdrop } from './office-map.js';
 export { SPRITES, CHARACTER_FOR } from './sprite-atlas.js';
@@ -32,8 +32,10 @@ export function headerStats(jobs) {
 }
 
 /** Legacy numeric formatting, with an explicit indicator for unknown subtotals. */
-export function formatCost(n, unavailable = 0) {
-  if (unavailable > 0) return n > 0 ? `$${n.toFixed(2)} + ${unavailable} unavailable` : 'Cost unavailable';
+export function formatCost(n, unavailable = 0, text = COST_TEXT_EN) {
+  if (unavailable > 0) return n > 0
+    ? `$${n.toFixed(2)} + ${(text.costUnavailableCount ?? COST_TEXT_EN.costUnavailableCount).replace('{n}', unavailable)}`
+    : (text.costUnavailable ?? COST_TEXT_EN.costUnavailable);
   return `$${(typeof n === 'number' && Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
 
