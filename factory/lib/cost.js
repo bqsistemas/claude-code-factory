@@ -90,31 +90,49 @@ export function readTranscripts(dir) {
 
 // Codex rollouts are internal JSONL. Project only accounting metadata; never
 // return prompts, tool responses, base instructions, credentials or rate limits.
+function workerAssignment(text) {
+  const lines = text.split(/\r?\n/);
+  // A contract starts the message, not a fenced/quoted example or an explanation.
+  const header = /^Job folder: factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\/[ \t]*$/.exec(lines[0]);
+  if (!header) return null;
+  const id = header[1];
+  let branchLine = 1;
+  if (lines[1]?.startsWith(`Round folder: factory/jobs/${id}/round-`)
+    && /^Round folder: factory\/jobs\/[\w-]+\/round-[1-9]\d*\/[ \t]*$/.test(lines[1])) branchLine = 2;
+  // A bare header is contradictory job evidence but cannot authorize usage in
+  // the shared checkout. Require the matching contiguous worker branch field.
+  return { id, assigned: lines[branchLine]?.trimEnd() === `Branch: factory/${id}` };
+}
+
 function codexRollout(text) {
   let meta = null, model = null, usageBeforePrompt = false;
-  const jobs = new Set(), snapshots = [];
+  const jobs = new Set(), assignments = new Set(), cwds = new Set(), snapshots = [];
   for (const e of entries(text)) {
     const p = e?.payload;
     if (!p || typeof p !== 'object') continue;
     if (e.type === 'session_meta' && !meta) {
-      meta = { id: p.id, cwd: p.cwd };
+      meta = { id: p.id, cwd: p.cwd, forked_from_id: p.forked_from_id ?? null };
     } else if (e.type === 'turn_context') {
       model = typeof p.model === 'string' ? p.model : null;
+      // Missing cwd in older rollouts is not evidence; an explicit malformed or
+      // foreign cwd is. Keep it so a resume cannot hide another job's usage.
+      if (Object.hasOwn(p, 'cwd')) cwds.add(p.cwd);
     } else if (e.type === 'response_item' && p.type === 'message' && p.role === 'user') {
-      const text = promptText(p.content);
-      // Dedicated worker contract only, not arbitrary job mentions in messages
-      // or tool output. Boilerplate instructions may precede this prompt.
-      for (const match of text.matchAll(/^Job folder: factory\/jobs\/(\d{3,}-[a-z0-9]+(?:-[a-z0-9]+)*)\/\s*$/gm)) jobs.add(match[1]);
+      const contract = workerAssignment(promptText(p.content));
+      if (contract) {
+        jobs.add(contract.id);
+        if (contract.assigned) assignments.add(contract.id);
+      }
     } else if (e.type === 'event_msg' && p.type === 'token_count' && p.info?.total_token_usage) {
       const u = p.info.total_token_usage;
-      if (!jobs.size && (u.input_tokens > 0 || u.output_tokens > 0)) usageBeforePrompt = true;
+      if (!assignments.size && (u.input_tokens > 0 || u.output_tokens > 0)) usageBeforePrompt = true;
       snapshots.push({ model, usage: {
         input_tokens: u.input_tokens, cached_input_tokens: u.cached_input_tokens ?? 0,
         cache_write_input_tokens: u.cache_write_input_tokens ?? 0, output_tokens: u.output_tokens,
       } });
     }
   }
-  return { meta, jobs: [...jobs], usageBeforePrompt, snapshots };
+  return { meta, jobs: [...jobs], assignments: [...assignments], cwds: [...cwds], usageBeforePrompt, snapshots };
 }
 
 const within = (path, base) => typeof path === 'string' && isAbsolute(path)
@@ -134,6 +152,8 @@ const magnitude = (s) => s.usage.input_tokens + s.usage.output_tokens;
  * Cumulative snapshots are merged by session id, not filename, and priced as
  * deltas so a model switch cannot reprice earlier usage. Unknown partial costs
  * make the whole job unavailable rather than presenting an invented total.
+ * Forks carry inherited prompts/counters under a new id, without a verified
+ * history boundary here; fail closed rather than billing copied parent usage.
  */
 export function codexJobCost(rollouts, job, prices, root) {
   const sessions = new Map();
@@ -148,14 +168,17 @@ export function codexJobCost(rollouts, job, prices, root) {
   const worktree = job.worktree || join(root, '.worktrees', job.id);
   for (const copies of sessions.values()) {
     const relevant = copies.some((r) => within(r.meta.cwd, worktree)
+      || r.cwds.some((cwd) => within(cwd, worktree))
       || (within(r.meta.cwd, root) && r.jobs.includes(job.id)));
     if (!relevant) continue;
     // A duplicate/resumed session must retain the same dedicated association.
     for (const r of copies) {
-      const worktreeMatch = within(r.meta.cwd, worktree);
-      const promptMatch = resolve(r.meta.cwd) === resolve(root) && r.jobs.length === 1 && r.jobs[0] === job.id;
-      if ((!worktreeMatch && !promptMatch) || r.jobs.some((id) => id !== job.id)
-        || (!worktreeMatch && r.usageBeforePrompt)) return unavailable('ambiguous_session');
+      const assigned = r.assignments.length === 1 && r.assignments[0] === job.id && !r.usageBeforePrompt;
+      const allowedCwd = (cwd) => within(cwd, worktree)
+        || (typeof cwd === 'string' && isAbsolute(cwd) && resolve(cwd) === resolve(root) && assigned);
+      if (r.meta.forked_from_id !== null || !allowedCwd(r.meta.cwd)
+        || r.cwds.some((cwd) => !allowedCwd(cwd))
+        || r.jobs.some((id) => id !== job.id)) return unavailable('ambiguous_session');
     }
     const snapshots = [];
     for (const r of copies) {
@@ -206,7 +229,9 @@ export function readCodexRollouts(dir, root) {
         const text = readText(path);
         if (text === null) continue;
         const r = codexRollout(text);
-        if (r.meta && (!root || within(r.meta.cwd, root))) out.push(r);
+        // A session may have entered this repo after starting elsewhere. Retain
+        // that contradictory evidence so it cannot leave a known partial total.
+        if (r.meta && (!root || within(r.meta.cwd, root) || r.cwds.some((cwd) => within(cwd, root)))) out.push(r);
       }
     }
   };

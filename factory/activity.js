@@ -155,6 +155,14 @@ export function costLabel(job) {
   return costAvailable(job) ? `$${job.cost_usd.toFixed(2)}` : DASH;
 }
 
+const COST_HINTS = Object.freeze({
+  missing_price: 'Configure exact-model Codex prices in factory/config.json, then sync.',
+  missing_model: 'Check the rollout model metadata, then sync.',
+  no_associated_usage: 'Run a dedicated job worker, then sync after usage is recorded.',
+  ambiguous_session: 'Use a dedicated, unforked session for this job; shared usage cannot be priced safely.',
+  invalid_usage: 'Check rollout usage counters, then sync with valid data.',
+});
+
 /**
  * Cost and elapsed time for a card: `$1.84` and the time from `started` to
  * `finished` (or `now`). Missing or invalid values render as '—'.
@@ -165,9 +173,12 @@ export function costLabel(job) {
 export function costTimeHtml(job, now = Date.now()) {
   const j = isObject(job) ? job : {};
   const cost = costLabel(j);
+  const reason = typeof j.cost_reason === 'string' && Object.hasOwn(COST_HINTS, j.cost_reason)
+    ? COST_HINTS[j.cost_reason] : 'Sync this job to check cost availability.';
+  const hint = cost === 'Cost unavailable' ? `Cost unavailable. ${reason}` : null;
   const start = typeof j.started === 'string' ? Date.parse(j.started) : NaN;
   const end = typeof j.finished === 'string' ? Date.parse(j.finished) : Number(now);
-  return `<span class="cost" title="cost">${esc(cost)}</span>` +
+  return `<span class="cost" title="${esc(hint ?? 'cost')}"${hint ? ` aria-label="${esc(hint)}"` : ''}>${esc(cost)}</span>` +
     `<span class="time" title="time">${esc(formatDuration(end - start))}</span>`;
 }
 
