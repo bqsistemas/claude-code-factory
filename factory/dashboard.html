@@ -53,16 +53,22 @@
          height: 100vh; height: 100dvh; overflow: hidden;
          font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
 
-  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; flex: none; padding: 10px 16px 2px; }
-  .top h1 { font-size: 18px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
-  .tag { font: 600 11px var(--mono); letter-spacing: .08em; padding: 2px 8px; border-radius: 999px;
-         background: var(--changes-bg); color: var(--changes); }
-  .theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
-                  border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
-                  font-size: 14px; cursor: pointer; align-self: center; }
+  .top { display: grid; grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-rows: 18px 14px;
+         column-gap: 10px; align-items: center; flex: none; padding: 4px 16px; }
+  .brand-icon { grid-column: 1; grid-row: 1 / 3; display: inline-flex; align-items: center; justify-content: center;
+                width: 32px; height: 32px; color: var(--active); }
+  .brand-icon svg { width: 28px; height: 28px; }
+  .top h1 { grid-column: 2; grid-row: 1; font-size: 16px; line-height: 18px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+  .brand-sub { grid-column: 2; grid-row: 2; font-size: 11px; line-height: 14px; margin: 0; color: var(--muted); white-space: nowrap; }
+  .top-end { grid-column: 4; grid-row: 1 / 3; display: flex; align-items: center; gap: 8px; }
+  .tag { font: 600 11px var(--mono); letter-spacing: .08em; display: inline-flex; align-items: center; height: 32px; padding: 0 10px;
+         border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--changes); }
+  .theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+                  border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+                  font-size: 14px; cursor: pointer; }
   .theme-toggle:hover { border-color: var(--muted); }
   .theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-  .status { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .status { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
                     background: var(--pass); margin-right: 6px; vertical-align: 1px; }
   .status.off::before { background: var(--alert); }
@@ -87,10 +93,19 @@
   .col.quiet h2 { writing-mode: vertical-rl; margin: 0; font-size: 13px; }
   .col.quiet .count { margin-left: 0; }
   /* Header stat tiles. */
-  .stats { display: flex; gap: 8px; align-self: center; flex-wrap: wrap; }
-  .stat { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 10px; border-radius: 999px;
+  .stats { grid-column: 3; grid-row: 1 / 3; display: flex; flex-wrap: nowrap; gap: 8px; min-width: 0; overflow-x: auto; }
+  .stat { display: inline-flex; align-items: center; flex: none; gap: 8px; height: 32px; padding: 0 10px 0 5px; border-radius: 10px;
           background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .stat .ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%;
+               color: var(--ink); background: color-mix(in srgb, currentColor 18%, var(--panel)); }
+  .stat .ico svg { width: 13px; height: 13px; }
+  .ico-jobs { color: var(--ink); }
+  .ico-running { color: var(--pass); }
+  .ico-agents { color: var(--active); }
+  .ico-cost { color: var(--changes); }
+  .stat .txt { display: flex; flex-direction: column; line-height: 13px; }
   .stat .v { font: 700 13px var(--mono); color: var(--ink); }
+  .stat .l { font-size: 11px; color: var(--muted); }
 
   /* Agent Office and the reserved Pipeline panel: two equal halves above the kanban. */
   .panels { display: grid; grid-template-columns: .82fr 1.18fr; gap: 8px; flex: none; height: clamp(260px, 56vh, 520px);
@@ -129,10 +144,18 @@
     .col.quiet h2 { writing-mode: horizontal-tb; }
     .col.quiet .count { margin-left: auto; }
     .lane { overflow-y: visible; }
-    .top { padding: 10px 12px 2px; }
+    .top { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; column-gap: 12px; padding: 6px 12px; }
+    .brand-sub, .stat .ico { display: none; }
+    .brand-icon { width: 20px; height: 20px; }
+    .brand-icon svg { width: 18px; height: 18px; }
+    .top h1 { line-height: 20px; }
+    .stats { flex-wrap: wrap; overflow: visible; }
+    .stat { height: 24px; padding: 0 10px; gap: 6px; }
+    .stat .txt { flex-direction: row; align-items: baseline; gap: 6px; }
+    .top-end { flex-wrap: wrap; }
   }
-  .parked { font-size: 12px; font-weight: 600; color: var(--alert); background: var(--alert-bg);
-            padding: 2px 10px; border-radius: 999px; text-decoration: none; }
+  .parked { display: inline-flex; align-items: center; height: 32px; font-size: 12px; font-weight: 600; color: var(--alert);
+            background: var(--panel); border: 1px solid var(--alert); padding: 0 10px; border-radius: 10px; text-decoration: none; }
   .parked:hover, .parked:focus-visible { text-decoration: underline; }
   a:focus-visible, .file:focus-visible, .close:focus-visible, .doc:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .col h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; flex: none; font-size: 14px; font-weight: 700; color: var(--ink); }
@@ -276,16 +299,20 @@
 <body>
 <header class="top">
   <h1>AI Software Factory</h1>
+  <span class="brand-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 21V9l6 3V9l6 3V4h3v8h3v9H3zm4-4h2v-2H7v2zm4 0h2v-2h-2v2zm4 0h2v-2h-2v2z"/></svg></span>
+  <p class="brand-sub">AI Agents · GitHub Issues → Production Ready PRs</p>
   <span class="stats">
-    <span class="stat" id="stat-jobs"><span class="v">–</span><span class="l"></span></span>
-    <span class="stat" id="stat-running"><span class="v">–</span><span class="l"></span></span>
-    <span class="stat" id="stat-agents"><span class="v">–</span><span class="l"></span></span>
-    <span class="stat" id="stat-cost"><span class="v">–</span><span class="l"></span></span>
+    <span class="stat" id="stat-jobs"><span class="ico ico-jobs" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 3 .8.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.300.1-2.700 0 0 .8-.3 2.800 1a9.500 9.500 0 0 1 5 0c1.900-1.300 2.800-1 2.800-1 .5 1.400.2 2.400.1 2.700.6.700 1 1.600 1 2.700 0 3.900-2.400 4.700-4.600 5 .4.300.7.900.7 1.800v2.700c0 .3.200.6.700.5A10 10 0 0 0 12 2z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+    <span class="stat" id="stat-running"><span class="ico ico-running" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+    <span class="stat" id="stat-agents"><span class="ico ico-agents" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm7 0a2.500 2.500 0 1 0 0-5 2.500 2.500 0 0 0 0 5zM9 13c-3 0-6 1.500-6 4v2h12v-2c0-2.500-3-4-6-4zm7 0c-.4 0-.8 0-1.200.1 1.200.9 2.200 2.200 2.200 3.900v2h5v-2c0-2.200-2.800-4-6-4z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
+    <span class="stat" id="stat-cost"><span class="ico ico-cost" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15.500V19h-2v-1.500c-1.400-.2-2.500-1-2.800-2.300l1.800-.5c.2.800.9 1.300 1.900 1.300 1 0 1.600-.4 1.600-1.100 0-.700-.5-1-1.900-1.400-1.800-.5-3.200-1.100-3.200-2.900 0-1.300 1-2.200 2.600-2.500V6h2v1.500c1.200.2 2.100.9 2.500 2l-1.700.6c-.3-.7-.8-1-1.600-1-.9 0-1.400.4-1.400 1 0 .6.500.9 1.800 1.300 1.900.5 3.300 1.200 3.300 3 0 1.400-1 2.300-2.800 2.600z"/></svg></span><span class="txt"><span class="v">–</span><span class="l"></span></span></span>
   </span>
-  <span class="tag" id="demo" hidden>DEMO</span>
-  <a class="parked" id="parked" href="#col-needs-human" hidden></a>
-  <button class="theme-toggle" id="theme-toggle" type="button"><span id="theme-icon" aria-hidden="true"></span></button>
-  <span class="status" id="status">connecting…</span>
+  <span class="top-end">
+    <span class="status" id="status">connecting…</span>
+    <button class="theme-toggle" id="theme-toggle" type="button"><span id="theme-icon" aria-hidden="true"></span></button>
+    <span class="tag" id="demo" hidden>DEMO</span>
+    <a class="parked" id="parked" href="#col-needs-human" hidden></a>
+  </span>
 </header>
 <div class="panels">
   <section class="panel office" id="office" aria-label="Agent Office">
@@ -334,6 +361,7 @@
     "notWritten": "Not written yet.",
     "parkedHuman": "{n} need{s} a human",
     "parkedInfo": "{n} waiting for info",
+    "statusLive": "Live · updated {ago}",
     "themeToLight": "Switch to light theme",
     "themeToNavy": "Switch to navy theme",
     "olderMerged": "+{n} older",
@@ -352,6 +380,7 @@
     "notWritten": "Todavía no está escrito.",
     "parkedHuman": "Necesitan una persona: {n}",
     "parkedInfo": "Esperando info: {n}",
+    "statusLive": "En vivo · actualizado {ago}",
     "themeToLight": "Cambiar al tema claro",
     "themeToNavy": "Cambiar al tema navy",
     "olderMerged": "+{n} anteriores",
@@ -370,6 +399,7 @@
     "notWritten": "Ainda não foi escrito.",
     "parkedHuman": "Precisam de uma pessoa: {n}",
     "parkedInfo": "Aguardando info: {n}",
+    "statusLive": "Ao vivo · atualizado {ago}",
     "themeToLight": "Mudar para o tema claro",
     "themeToNavy": "Mudar para o tema navy",
     "olderMerged": "+{n} anteriores",
@@ -490,7 +520,7 @@ async function poll() {
       renderOffice();
       if (openJob) { cache.clear(); openDrawer(openJob, openFile); }
     }
-    status.textContent = `live · updated ${ago(board.updated) || 'just now'}`;
+    status.textContent = T.statusLive.replace('{ago}', ago(board.updated) || 'just now');
   } catch (err) {
     if (err instanceof SyntaxError && lastText) return;   // mid-write; try again next poll
     const status = $('status');
