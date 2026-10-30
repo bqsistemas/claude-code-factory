@@ -117,6 +117,31 @@
   .panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px; border-radius: 14px;
            background: var(--col); border: 1px solid var(--line); }
   .panel h2 { margin: 0 0 6px; flex: none; font-size: 14px; font-weight: 700; color: var(--ink); }
+  .pipeline-layout { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; flex: 1; min-height: 0; }
+  .pipeline-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+  .pipeline-controls label, .pipeline-field dt { color: var(--muted); font-size: 11px; }
+  .pipeline-controls select { display: block; width: 100%; min-width: 0; margin-top: 2px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); }
+  .pipeline-controls select:focus-visible, .pipeline-node:focus-visible, .pipeline-artifact:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .pipeline-layout select:disabled { opacity: .7; }
+  .pipeline-content { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(220px, .85fr); gap: 10px; min-height: 0; }
+  .pipeline-canvas { display: flex; align-items: flex-start; gap: 6px; overflow-x: auto; min-width: 0; padding: 4px 2px 10px; }
+  .pipeline-node { position: relative; display: grid; align-content: start; justify-items: center; gap: 5px; flex: 1 0 62px; min-width: 62px; padding: 8px 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); cursor: pointer; text-align: center; }
+  .pipeline-node:not(:last-child)::after { content: "→"; position: absolute; left: calc(100% + 1px); top: 18px; z-index: 1; color: var(--muted); }
+  .pipeline-node[data-state="complete"] { border-color: var(--pass); }
+  .pipeline-node[data-state="active"] { border-color: var(--active); box-shadow: inset 0 0 0 1px var(--active); }
+  .pipeline-node[data-state="blocked"] { border-color: var(--alert); }
+  .pipeline-node[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--focus); }
+  .pipeline-node-label { font-weight: 700; }
+  .pipeline-node-state { color: var(--muted); font-size: 11px; }
+  .pipeline-inspector { min-width: 0; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 8px; }
+  .pipeline-inspector h3 { margin: 0 0 5px; font-size: 13px; }
+  .pipeline-fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 0; }
+  .pipeline-field { display: contents; }
+  .pipeline-field dt { margin: 0; }
+  .pipeline-field dd { margin: 0; overflow-wrap: anywhere; }
+  .pipeline-links, .pipeline-artifacts { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
+  .pipeline-artifact { border: 0; padding: 0; background: none; color: var(--pending); font: inherit; text-decoration: underline; cursor: pointer; }
+  .pipeline-missing { color: var(--muted); }
   .office-stage { position: relative; flex: 1; min-height: 0; min-width: 0; overflow: hidden; display: flex; align-items: center; justify-content: center;
                   background: #081321; }
   #office-canvas { display: block; max-width: 100%; image-rendering: auto; }
@@ -141,9 +166,14 @@
     .panels { grid-template-columns: 1fr; height: auto; }
     /* Keep the whole connected office visible, including on narrow screens. */
     .office-stage { display: flex; flex: none; width: 100%; aspect-ratio: 768 / 500; overflow: hidden; background: #081321; }
-    .panel.pipeline { min-height: 80px; }
+    .panel.pipeline { min-height: 270px; }
+    .pipeline-content { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+    .pipeline-canvas { min-height: 68px; }
   }
   @media (max-width: 640px) {
+    .pipeline-controls { grid-template-columns: 1fr; }
+    .pipeline-content { grid-template-columns: minmax(0, 1fr); }
+    .pipeline-inspector { max-height: 190px; }
     body { display: block; height: auto; overflow: visible; }
     .board { flex-direction: column; align-items: stretch; overflow-x: visible; overflow-y: visible; padding: 8px 12px 16px; }
     .col, .col.quiet { flex: none; width: auto; min-width: 0; }
@@ -340,6 +370,7 @@
   @keyframes octo-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
   @media (prefers-reduced-motion: reduce) {
     .agent, .agent .avatar, .chip.pending { animation: none; }
+    .pipeline-node { transition: none; }
     .octo, .octo-tentacle, .octo-eye { animation: none; }
     .card, .col { transition: none; }
     .guide, .drawer { transition: none; }
@@ -380,6 +411,16 @@
   </section>
   <section class="panel pipeline" id="pipeline" aria-label="Pipeline for task">
     <h2>Pipeline for task</h2>
+    <div class="pipeline-layout">
+      <div class="pipeline-controls">
+        <label>Job<select id="pipeline-job" aria-label="Select job"></select></label>
+        <label>Stage<select id="pipeline-stage" aria-label="Select pipeline stage"></select></label>
+      </div>
+      <div class="pipeline-content">
+        <div class="pipeline-canvas" id="pipeline-canvas" aria-label="Pipeline stages"></div>
+        <section class="pipeline-inspector" id="pipeline-inspector" aria-live="polite"></section>
+      </div>
+    </div>
   </section>
 </div>
 <main class="board" id="board"></main>
@@ -548,6 +589,7 @@ import {
 } from './activity.js';
 import { formatCost, headerStats } from './office.js';
 import { createOffice } from './office-renderer.js';
+import { CANVAS_STAGES, artifactFiles, branchLink, derivePipeline, githubLinks, isSafeJobId, stageDetails } from './pipeline-canvas.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const BASE = DEMO ? 'demo/' : '';
@@ -557,6 +599,7 @@ const DONE = new Set(['merged', 'rejected']);
 
 const I18N = JSON.parse(document.getElementById('i18n').textContent);
 let board = { jobs: [] }, loaded = false, lastText = '', openJob = null, openFile = null, olderOpen = false;
+let selectedJobId = null, selectedStage = 'intake';
 const cache = new Map();
 // Board data only selects a dictionary key; it is never interpolated as markup.
 let T = I18N.en;
@@ -609,6 +652,8 @@ function card(job) {
 function render() {
   setLanguage();
   const jobs = board.jobs || [];
+  if (!jobs.some((job) => job.id === selectedJobId)) selectedJobId = jobs[0]?.id ?? null;
+  renderPipeline();
   if (!jobs.length) {
     $('board').innerHTML = `<div class="empty">${T.emptyBoard}
       ${DEMO ? '' : `<br><br>${T.demoLink}`}</div>`;
@@ -666,18 +711,69 @@ async function poll() {
 // --- drawer -----------------------------------------------------------------
 
 function filesOf(job) {
-  const files = ['issue.md', 'intake.md', 'spec.md', 'build.md'];
-  roundsOf(job).forEach((r, i) => {
-    files.push(`round-${i + 1}/checks.md`);
-    const reviews = r.reviews && typeof r.reviews === 'object' ? r.reviews : {};
-    const keys = [...REVIEWERS.filter(k => k in reviews), ...Object.keys(reviews).filter(k => !REVIEWERS.includes(k))];
-    keys.forEach(k => files.push(`round-${i + 1}/review-${k}.md`));
-  });
-  files.push('decision.md', 'merge-checks.md');
-  return files;
+  // Allowlisted Markdown artifacts: issue.md, intake.md, spec.md, build.md, checks.md, reviews, decision.md, and merge-checks.md.
+  return artifactFiles(job);
 }
 
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+
+function renderPipeline() {
+  const jobs = Array.isArray(board.jobs) ? board.jobs : [];
+  const selectedJob = jobs.find((job) => job.id === selectedJobId);
+  const jobSelect = $('pipeline-job');
+  jobSelect.innerHTML = jobs.map((job) => `<option value="${escapeHTML(job.id)}">${escapeHTML(job.title || job.id || 'Job')}</option>`).join('');
+  jobSelect.disabled = jobs.length === 0;
+  if (selectedJob) jobSelect.value = selectedJob.id;
+  const stageSelect = $('pipeline-stage');
+  stageSelect.innerHTML = CANVAS_STAGES.map((stage) => `<option value="${stage.key}">${stage.label}</option>`).join('');
+  stageSelect.value = CANVAS_STAGES.some((stage) => stage.key === selectedStage) ? selectedStage : 'intake';
+  stageSelect.disabled = !selectedJob;
+  const stages = derivePipeline(selectedJob);
+  $('pipeline-canvas').innerHTML = stages.map((stage) => `<button type="button" class="pipeline-node" data-stage="${stage.key}" data-state="${stage.state}" aria-pressed="${stage.key === stageSelect.value}" aria-label="${stage.label}: ${stage.state}">
+    <span class="pipeline-node-label">${stage.label}</span><span class="pipeline-node-state">${stage.state}</span></button>`).join('');
+  if (!selectedJob) {
+    $('pipeline-inspector').innerHTML = '<p class="pipeline-missing">No jobs available</p>';
+    return;
+  }
+  const details = stageDetails(selectedJob, stageSelect.value);
+  const fields = [['Issue', details.issue], ['Stage', details.stage], ['Status', details.status], ['Progress', details.progress],
+    ['Duration', details.duration], ['Cost', details.cost], ['Agent / model', details.agent], ['Round', details.round],
+    ['Reviewers', details.reviewers], ['Branch', details.branch], ['PR', details.pr], ['Note', details.note]];
+  const links = githubLinks(selectedJob, board.repo);
+  const files = filesOf(selectedJob);
+  const branch = branchLink(selectedJob, board.repo);
+  $('pipeline-inspector').innerHTML = `<h3>${escapeHTML(selectedJob.title || selectedJob.id)} · ${escapeHTML(details.label)}</h3>
+    <dl class="pipeline-fields">${fields.map(([label, value]) => `<div class="pipeline-field"><dt>${label}</dt><dd class="${value === 'Not available' ? 'pipeline-missing' : ''}">${label === 'Branch' && branch ? `<a href="${escapeHTML(branch.href)}" target="_blank" rel="noopener">${escapeHTML(branch.label)}</a>` : escapeHTML(value)}</dd></div>`).join('')}</dl>
+    <div class="pipeline-links">${links.length ? links.map((link) => `<a href="${escapeHTML(link.href)}" target="_blank" rel="noopener">${escapeHTML(link.label)}</a>`).join('') : '<span class="pipeline-missing">GitHub links not available</span>'}</div>
+    <div class="pipeline-artifacts" aria-label="Job artifacts">${files.map((artifact) => `<button type="button" class="pipeline-artifact" data-artifact="${escapeHTML(artifact)}">${escapeHTML(artifact)}</button>`).join('')}</div>`;
+}
+
+$('pipeline-job').addEventListener('change', (event) => {
+  selectedJobId = event.target.value || null;
+  renderPipeline();
+});
+$('pipeline-stage').addEventListener('change', (event) => {
+  selectedStage = event.target.value;
+  renderPipeline();
+});
+$('pipeline-canvas').addEventListener('click', (event) => {
+  const node = event.target.closest('.pipeline-node');
+  if (!node) return;
+  selectedStage = node.dataset.stage;
+  renderPipeline();
+  $('pipeline-stage').focus();
+});
+$('pipeline-inspector').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-artifact]');
+  if (!button || !selectedJobId) return;
+  const selectedJob = (board.jobs || []).find((job) => job.id === selectedJobId);
+  if (selectedJob && artifactFiles(selectedJob).includes(button.dataset.artifact)) openDrawer(selectedJob.id, button.dataset.artifact);
+});
+
 async function load(job, file) {
+  if (!isSafeJobId(job?.id) || !filesOf(job).includes(file)) return null;
   const key = `${job.id}/${file}`;
   if (!cache.has(key)) {
     cache.set(key, fetch(`${BASE}jobs/${encodeURIComponent(job.id)}/${file}`, { cache: 'no-store' })
