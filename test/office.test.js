@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone } from '../factory/activity.js';
 import { AVATARS } from '../factory/avatars.js';
 import {
-  AREAS, CHARACTER_FOR, FURNITURE, LOUNGE_SPOTS, MAP, MEETING_SEATS, SEATS, SPRITES, WAYPOINTS,
+  AREAS, CHARACTER_FOR, FURNITURE, LOUNGE_SPOTS, MAP, MEETING_SEATS, SEATS, SPRITES, WAYPOINTS, WALL_H, PARTITION, DOOR_W, officeBackdrop,
   areaForStage, areaTone, bubbleText, describeOffice, formatCost, headerStats, hitTargets, layoutOffice, officeState, remapWalker, route,
 } from '../factory/office.js';
 
@@ -246,4 +246,96 @@ test('AC-5: the base layout is identical to the constants and remapWalker follow
   const q = remapWalker({ x: 9999, y: -4, node: 'cor_c', queue: ['cor_d'] }, from, to);
   assert.ok(q.x <= to.map.width && q.y >= 0);
   assert.deepEqual(remapWalker(null, from, to), { x: 0, y: 0 });
+});
+
+const within = (o, r) => o.x >= r.x && o.y >= r.y && o.x + o.w <= r.x + r.w && o.y + o.h <= r.y + r.h;
+
+test('AC-1: atlas rects for wall, floor, partition and wall props', () => {
+  assert.deepEqual(SPRITES.wall, { x: 84, y: 70, w: 26, h: 20 });
+  assert.deepEqual(SPRITES.floor, { x: 3, y: 68, w: 73, h: 24 });
+  assert.deepEqual(SPRITES.partition, { x: 171, y: 44, w: 79, h: 17 });
+  assert.ok(!Object.hasOwn(SPRITES, 'sign'));
+  assert.ok(['window', 'clock', 'calendar'].some((k) => Object.hasOwn(SPRITES, k)));
+  for (const { x, y, w, h } of Object.values(SPRITES)) assert.ok(x >= 0 && y >= 0 && x + w <= 256 && y + h <= 160);
+  assert.equal(WALL_H, SPRITES.wall.h);
+});
+
+test('AC-2: Escalation prop is a calendar or flag below the wall strip', () => {
+  const esc = AREAS.find((a) => a.id === 'escalation').rect;
+  const f = FURNITURE.find((e) => inside2(esc, e.x + SPRITES[e.sprite].w / 2, e.y + SPRITES[e.sprite].h / 2) && ['calendar', 'flag'].includes(e.sprite));
+  assert.ok(f && Object.hasOwn(SPRITES, f.sprite));
+  assert.ok(f.y >= 68 + WALL_H);
+  for (const e of FURNITURE) assert.ok(!['sign', 'wall', 'floor', 'partition'].includes(e.sprite));
+});
+function inside2(r, x, y) { return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h; }
+
+test('AC-3: corridor and one door per area', () => {
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h), bd = officeBackdrop(l);
+    const top = l.areas.filter((a) => a.rect.y === 0), bot = l.areas.filter((a) => a.rect.y > 0);
+    const y0 = Math.max(...top.map((a) => a.rect.y + a.rect.h)), y1 = Math.min(...bot.map((a) => a.rect.y));
+    assert.deepEqual(bd.corridor, { x: 0, y: y0, w: l.map.width, h: y1 - y0 });
+    assert.ok(bd.corridor.h > 0);
+    assert.equal(bd.doors.length, l.areas.length);
+    for (const a of l.areas) {
+      const d = bd.doors.find((x) => x.id === a.id), nx = l.nodes['door_' + a.id].x;
+      assert.equal(d.w, DOOR_W);
+      assert.ok(d.x >= a.rect.x && d.x + d.w <= a.rect.x + a.rect.w && nx >= d.x && nx < d.x + d.w);
+    }
+  }
+});
+
+test('AC-4: wall strips cover each area except the bottom-row door, with a wall prop', () => {
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h), bd = officeBackdrop(l);
+    for (const a of l.areas) {
+      const segs = bd.walls.filter((s) => s.id === a.id).sort((p, q) => p.x - q.x);
+      assert.ok(segs.length);
+      for (const s of segs) assert.ok(s.y === a.rect.y && s.h === WALL_H && within(s, a.rect));
+      const door = bd.doors.find((d) => d.id === a.id);
+      const covered = new Set();
+      for (const s of segs) for (let x = s.x; x < s.x + s.w; x++) covered.add(x);
+      for (let x = a.rect.x; x < a.rect.x + a.rect.w; x++) {
+        const inDoor = x >= door.x && x < door.x + door.w;
+        assert.equal(covered.has(x), a.rect.y === 0 || !inDoor);
+      }
+      const props = bd.wallProps.filter((p) => p.id === a.id);
+      assert.ok(props.length);
+      for (const p of props) {
+        const sp = SPRITES[p.sprite];
+        assert.ok(['window', 'clock', 'calendar'].includes(p.sprite));
+        assert.ok(Number.isInteger(p.x) && Number.isInteger(p.y));
+        assert.ok(segs.some((s) => within({ x: p.x, y: p.y, w: sp.w, h: sp.h }, s)));
+      }
+    }
+  }
+});
+
+test('AC-5: partitions at the shared borders and doors stay reachable', () => {
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h), bd = officeBackdrop(l);
+    const sameRow = (a, b) => a.rect.y === b.rect.y;
+    let borders = 0;
+    for (const a of l.areas) for (const b of l.areas) {
+      if (a !== b && sameRow(a, b) && a.rect.x + a.rect.w === b.rect.x) {
+        borders++;
+        assert.ok(bd.partitions.some((p) => p.x === b.rect.x - PARTITION && p.y === a.rect.y + WALL_H && p.w === PARTITION && p.h === a.rect.h - WALL_H));
+      }
+    }
+    assert.equal(borders, 5);
+    for (const p of bd.partitions) assert.ok(within(p, { x: 0, y: 0, w: l.map.width, h: l.map.height }));
+    for (const a of l.areas) {
+      const n = l.nodes['door_' + a.id], cy = bd.corridor.y + Math.floor(bd.corridor.h / 2);
+      const y0 = Math.min(n.y, cy), y1 = Math.max(n.y, cy);
+      for (const o of [...bd.partitions, ...bd.walls]) {
+        const hit = n.x >= o.x && n.x < o.x + o.w && y1 > o.y && y0 < o.y + o.h;
+        assert.ok(!hit, `${a.id} door blocked`);
+      }
+    }
+  }
+});
+
+test('AC-6: officeBackdrop never throws on invalid input', () => {
+  const empty = { corridor: null, doors: [], walls: [], wallProps: [], partitions: [] };
+  for (const v of [null, undefined, {}, 'x', 5, [], { areas: 'x' }, { nodes: {} }]) assert.deepEqual(officeBackdrop(v), empty);
 });

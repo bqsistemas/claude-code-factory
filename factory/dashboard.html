@@ -380,7 +380,7 @@ import {
   roundsOf, splitMerged,
 } from './activity.js';
 import {
-  CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats,
+  CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats, officeBackdrop,
   hitTargets, layoutOffice, officeState, remapWalker, route,
 } from './office.js';
 import { AVATARS } from './avatars.js';
@@ -675,6 +675,8 @@ const SPEED = 48;                       // map pixels per second
 const atlas = new Image();
 let atlasOk = false, office = null, officeKey = '', liveKey = '', layout = null, layoutKey = '', raf = 0, last = 0;
 const walkers = new Map();              // agent -> { x, y, node, queue }
+const backdrop = document.createElement('canvas');
+let backdropKey = '';
 let boxes = new Map();                  // "kind:key" -> screen-pixel box, for hotspots
 atlas.onload = () => { atlasOk = true; drawOffice(); };
 atlas.src = SPRITE_URL;
@@ -760,33 +762,80 @@ function drawText(ctx, text, x, y, color, align = 'left') {
   ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText(text, x, y);
 }
 
+// Static scenery (floor, walls, partitions, furniture) painted once per layout, theme and atlas state.
+function paintBackdrop() {
+  const canvas = $('office-canvas');
+  backdrop.width = canvas.width; backdrop.height = canvas.height;
+  const ctx = backdrop.getContext('2d');
+  const S = layout.scale, line = cssVar('--line');
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = cssVar('--col');
+  ctx.fillRect(0, 0, backdrop.width, backdrop.height);
+  const outline = (r) => {
+    ctx.globalAlpha = 1; ctx.strokeStyle = line; ctx.lineWidth = 1;
+    ctx.strokeRect(r.x * S + 0.5, r.y * S + 0.5, r.w * S - 1, r.h * S - 1);
+  };
+  if (!atlasOk) {
+    for (const area of layout.areas) {
+      const { x, y, w, h } = area.rect;
+      ctx.globalAlpha = 0.14; ctx.fillStyle = toneColor(areaTone(area.id)); ctx.fillRect(x * S, y * S, w * S, h * S);
+      outline(area.rect);
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+  const sprite = (name, x, y) => {
+    const r = SPRITES[name];
+    ctx.drawImage(atlas, r.x, r.y, r.w, r.h, x * S, y * S, r.w * S, r.h * S);
+  };
+  // Tile a sprite over a map-pixel rect, anchored at its top-left corner and clipped to it.
+  const tile = (name, rc) => {
+    const r = SPRITES[name];
+    ctx.save();
+    ctx.beginPath(); ctx.rect(rc.x * S, rc.y * S, rc.w * S, rc.h * S); ctx.clip();
+    for (let ty = rc.y; ty < rc.y + rc.h; ty += r.h) for (let tx = rc.x; tx < rc.x + rc.w; tx += r.w) sprite(name, tx, ty);
+    ctx.restore();
+  };
+  const bd = officeBackdrop(layout);
+  if (bd.corridor) {
+    const c = bd.corridor;
+    ctx.fillStyle = line; ctx.fillRect(c.x * S, c.y * S, c.w * S, c.h * S);
+  }
+  for (const area of layout.areas) {
+    tile('floor', area.rect);
+    ctx.globalAlpha = 0.25; ctx.fillStyle = toneColor(areaTone(area.id));
+    ctx.fillRect(area.rect.x * S, area.rect.y * S, area.rect.w * S, area.rect.h * S);
+    ctx.globalAlpha = 1;
+  }
+  for (const wl of bd.walls) tile('wall', wl);
+  for (const p of bd.wallProps) sprite(p.sprite, p.x, p.y);
+  for (const p of bd.partitions) tile('partition', p);
+  const furn = layout.furniture.map((f) => ({ ...f, r: SPRITES[f.sprite] })).sort((a, b) => a.y + a.r.h - (b.y + b.r.h));
+  for (const f of furn) sprite(f.sprite, f.x, f.y);
+  for (const area of layout.areas) outline(area.rect);
+}
+
 function drawOffice(now = 0, moving = false) {
   const canvas = $('office-canvas');
   if (!office) return;
   fitCanvas();
   const { areas: AREAS, furniture: FURNITURE } = layout;
   const ctx = canvas.getContext('2d');
-  const S = layout.scale, ink = cssVar('--ink'), line = cssVar('--line'), muted = cssVar('--muted');
+  const S = layout.scale, ink = cssVar('--ink');
   ctx.imageSmoothingEnabled = false;
   ctx.textBaseline = 'alphabetic';
   ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
-  ctx.fillStyle = cssVar('--col');
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const bkey = `${layoutKey}|${document.documentElement.getAttribute('data-theme')}|${atlasOk}`;
+  if (bkey !== backdropKey) { paintBackdrop(); backdropKey = bkey; }
+  ctx.drawImage(backdrop, 0, 0);
   const nextBoxes = new Map();
   for (const area of AREAS) {
     const { x, y, w, h } = area.rect;
-    ctx.globalAlpha = 0.14; ctx.fillStyle = toneColor(areaTone(area.id)); ctx.fillRect(x * S, y * S, w * S, h * S);
-    ctx.globalAlpha = 1; ctx.strokeStyle = line; ctx.lineWidth = 1;
-    ctx.strokeRect(x * S + 0.5, y * S + 0.5, w * S - 1, h * S - 1);
-    drawText(ctx, area.label, x * S + 4, y * S + 12, muted);
+    const lw = ctx.measureText(area.label).width;
+    ctx.fillStyle = cssVar('--panel'); ctx.fillRect(x * S + 2, y * S + 1, lw + 6, 17);
+    drawText(ctx, area.label, x * S + 4, y * S + 12, ink);
     nextBoxes.set(`area:${area.id}`, { x: x * S, y: y * S, w: w * S, h: h * S });
   }
-  const sprite = (name, x, y) => {
-    const r = SPRITES[name];
-    if (atlasOk) ctx.drawImage(atlas, r.x, r.y, r.w, r.h, x * S, y * S, r.w * S, r.h * S);
-  };
-  const furn = FURNITURE.map((f) => ({ ...f, r: SPRITES[f.sprite] })).sort((a, b) => a.y + a.r.h - (b.y + b.r.h));
-  for (const f of furn) sprite(f.sprite, f.x, f.y);
   const at = (name) => FURNITURE.find((f) => f.sprite === name);
   // Gate terminal: lit while a job is in gate, with the latest verdict.
   const gate = at('terminal'), gr = SPRITES.terminal;
@@ -794,7 +843,7 @@ function drawOffice(now = 0, moving = false) {
   ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
   ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
   ctx.globalAlpha = 1;
-  // Meeting table and Escalation sign text sit on `--panel` chips, so they read with or without the atlas.
+  // Meeting table and Escalation flag text sit on `--panel` chips, so they read with or without the atlas.
   const labelChip = (text, cx, cy, tone) => {
     const tw = ctx.measureText(text).width + 10;
     ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, cy - 7, tw, 15);
@@ -820,11 +869,11 @@ function drawOffice(now = 0, moving = false) {
     const t = at('deskLong'), tr = SPRITES.deskLong;
     labelChip(office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S, 'review');
   }
-  const sign = at('sign'), sr = SPRITES.sign;
+  const flag = at('flag'), fr = SPRITES.flag;
   const labels = office.escalation.map((t) => t.label);
   if (labels.length) {
     const shown = labels.length > 2 ? [...labels.slice(0, 2), `+${labels.length - 2}`] : labels;
-    labelChip(shown.join(' '), (sign.x + sr.w / 2) * S, (sign.y + sr.h / 2) * S, 'parked');
+    labelChip(shown.join(' '), (flag.x + fr.w / 2) * S, (flag.y + fr.h / 2) * S, 'parked');
   }
   // Archive shelf and bin: merged and rejected counts.
   const shelf = at('shelf'), shr = SPRITES.shelf, bin = at('bin'), br = SPRITES.bin;
@@ -885,11 +934,11 @@ function drawOffice(now = 0, moving = false) {
     bubbles.push({ agent, text: st.bubble, color, place: st.place, cx: left + (r.w * S) / 2, y: top });
   }
   // Panel-colored tags with ink text (readable in both themes); the role color is the border.
-  // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation sign or the
+  // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation flag or the
   // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
   // character; with no free slot the tag is omitted (the accessible list still names every agent).
   const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
-  const obstacles = [spr('terminal'), spr('sign'), spr('deskLong'), spr('shelf'), spr('bin'), ...archiveChips, ...gateChips,
+  const obstacles = [spr('terminal'), spr('flag'), spr('deskLong'), spr('shelf'), spr('bin'), ...archiveChips, ...gateChips,
     ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
     // Faces only: a tag may cover someone's body but never their head.
     ...[...nextBoxes].filter(([k]) => k.startsWith('agent:')).map(([, box]) => ({ x: box.x, y: box.y, w: box.w, h: Math.round(box.h * 0.4) })),

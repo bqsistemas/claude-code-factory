@@ -45,3 +45,20 @@ test('AC-6: the dashboard draws from layoutOffice instead of the fixed map size'
   assert.doesNotMatch(script, /MAP\.(width|height)/);
   assert.match(css, /#office-canvas\s*\{[^}]*image-rendering:\s*pixelated/);
 });
+
+test('AC-7: static backdrop is painted offscreen once per key', () => {
+  assert.match(script, /import\s*\{[^}]*\bofficeBackdrop\b[^}]*\}\s*from '\.\/office\.js'/);
+  assert.match(script, /document\.createElement\('canvas'\)/);
+  const start = script.indexOf('function paintBackdrop'), end = script.indexOf('function drawOffice');
+  assert.ok(start >= 0 && end > start);
+  const paint = script.slice(start, end), draw = script.slice(end);
+  const outside = script.slice(0, start) + draw;
+  assert.ok(!outside.includes('officeBackdrop(') && !outside.includes('areaTone('));
+  assert.ok(paint.includes('officeBackdrop(') && paint.includes('areaTone('));
+  assert.ok(draw.slice(0, draw.indexOf('\nfunction ') > 0 ? draw.indexOf('\nfunction ') : undefined).includes('drawImage(backdrop'));
+  assert.match(paint, /globalAlpha = 0\.14/);
+  assert.match(script, /backdropKey[\s\S]{0,200}|const bkey/);
+  const keyLine = script.match(/const bkey = .*/)[0];
+  assert.ok(keyLine.includes('layoutKey') && keyLine.includes('data-theme') && keyLine.includes('atlasOk'));
+  assert.ok(!script.includes("'sign'"));
+});
