@@ -11,6 +11,7 @@ test('new atlas has semantic source coordinates and eight documented role mappin
   assert.deepEqual(m.sourceSize, { width: 768, height: 512 });
   assert.equal(Object.keys(m.characters).length, 8);
   for (const s of Object.values(m.sprites)) assert.ok(s.x >= 0 && s.y >= 0 && s.x+s.w <= 768 && s.y+s.h <= 512);
+  assert.notDeepEqual(m.sprites.floorCorridor, m.sprites.floorTile);
   assert.match(m.substitutions.join(' '), /UI/);
 });
 test('all complete walk edges clear walls and furniture with a foot radius', () => {
@@ -29,6 +30,13 @@ test('all reachable seats and meeting points have radius-safe routes, including 
       }
     }
   }
+});
+test('review workers use the computer-side anchors while meeting anchors stay at the table', () => {
+  for (const role of ['review-security','review-ux','review-ui','review-code']) {
+    assert.equal(WAYPOINTS.nodes[SEATS[role]].y, 425);
+    assert.equal(WAYPOINTS.nodes[MEETING_SEATS[role]].y, 475);
+  }
+  assert.equal(FURNITURE.filter(f => f.sprite === 'deskDual' && f.y === 381).length, 4);
 });
 test('mid-edge reversal follows the current edge before changing route', () => {
   const from = LOUNGE_SPOTS.intake, to = SEATS.intake;
@@ -76,6 +84,51 @@ test('three jobs, partial reviews, rework history and parked tokens remain autho
   const rework=officeState([job('35','build',{round:3,gate:null,history:[{round:2,gate:'FAIL'}]})]);
   assert.equal(rework.gate.status,'FAIL'); assert.equal(rework.tokens.engineering[0].stage,'build');
   assert.equal(officeState([job('2','merging')]).merging.status,'merging');
+});
+test('a reviewer leaves Review as soon as its verdict is recorded', () => {
+  const state = officeState([job('37', 'review', { reviews: { security: 'PASS', ux: 'CHANGES', ui: 'PASS', code: 'PASS' } })]);
+  for (const role of ['review-security', 'review-ux', 'review-ui', 'review-code']) {
+    assert.equal(state.agents[role].place, 'lounge');
+    assert.equal(state.agents[role].work.length, 0);
+  }
+  assert.equal(state.meeting, null);
+});
+test('issue 37 stage transitions retarget exactly one worker while parallel jobs stay independent', () => {
+  const jobs = [
+    job('030-restyle-dashboard-header-to', 'intake', { issue: 37 }),
+    job('031-parallel-build', 'build', { issue: 38 }),
+    job('032-parallel-review', 'review', { issue: 39, reviews: { security: 'pending', ux: 'PASS', code: 'pending' } }),
+  ];
+  const intake = officeState(jobs);
+  assert.equal(intake.agents.intake.node, SEATS.intake);
+  assert.equal(intake.agents['spec-writer'].node, LOUNGE_SPOTS['spec-writer']);
+  assert.equal(intake.agents.builder.node, SEATS.builder);
+  assert.equal(intake.agents['review-security'].node, MEETING_SEATS['review-security']);
+  assert.equal(intake.agents['review-code'].node, MEETING_SEATS['review-code']);
+  assert.equal(intake.agents['review-ux'].node, LOUNGE_SPOTS['review-ux']);
+  assert.equal(Object.keys(intake.agents).length, 8);
+
+  jobs[0] = { ...jobs[0], stage: 'spec' };
+  const spec = officeState(jobs);
+  assert.equal(spec.agents.intake.node, LOUNGE_SPOTS.intake);
+  assert.equal(spec.agents['spec-writer'].node, SEATS['spec-writer']);
+  assert.equal(spec.agents.builder.node, SEATS.builder);
+  assert.equal(spec.agents['review-security'].node, MEETING_SEATS['review-security']);
+
+  // Exercise the same route/retarget/advance sequence used by the canvas renderer.
+  const walker = { ...WAYPOINTS.nodes[LOUNGE_SPOTS.intake], node: LOUNGE_SPOTS.intake, target: LOUNGE_SPOTS.intake, queue: [] };
+  retargetWalker(walker, intake.agents.intake.node);
+  assert.ok(walker.queue.length > 0, 'intake should leave Lounge when issue #37 enters intake');
+  let frames = 0;
+  while (walker.queue.length && frames++ < 1000) advanceWalker(walker, 0.1);
+  assert.ok(frames < 1000);
+  assert.equal(walker.node, SEATS.intake);
+  retargetWalker(walker, spec.agents.intake.node);
+  assert.ok(walker.queue.length > 0, 'intake should return to Lounge after issue #37 advances to spec');
+  frames = 0;
+  while (walker.queue.length && frames++ < 1000) advanceWalker(walker, 0.1);
+  assert.ok(frames < 1000);
+  assert.equal(walker.node, LOUNGE_SPOTS.intake);
 });
 test('running gate wins over stale verdict; stage subregions open oldest job', () => {
   const jobs=[job('2','build',{gate:'PASS'}),job('3','gate'),job('1','build',{started:'2025-01-01'})];

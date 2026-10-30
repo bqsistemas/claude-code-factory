@@ -1,6 +1,6 @@
 {
   "source": "PixelOfficeAssets.png",
-  "image": "office-atlas.png",
+  "image": "office-atlas-assets.png",
   "sourceSize": {
     "width": 768,
     "height": 512
@@ -180,6 +180,12 @@
       "y": 370,
       "w": 31,
       "h": 31
+    },
+    "floorCorridor": {
+      "x": 55,
+      "y": 374,
+      "w": 24,
+      "h": 24
     },
     "cabinet": {
       "x": 321,

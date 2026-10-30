@@ -6,7 +6,7 @@ The map has a fixed 768×500 logical coordinate system that scales proportionall
 
 ## Atlas
 
-`assets/pixel-office-2/PixelOfficeAssets.png` is the untouched 768×512 source sheet. `build_atlas.py` makes `office-atlas.png`, `atlas.json`, and `sprite-atlas.js` reproducibly from documented source rectangles, using Pillow and an alpha threshold of 200 to remove low-alpha colored fringe pixels. It does not resample or invent sprite pixels. The UI role uses the intact side pose because its hat pixels are incomplete; roles have one complete pose each, so movement is translation/bob, not fabricated walk cycles. The meeting table reuses a scaled clean table sprite.
+`assets/pixel-office-2/PixelOfficeAssets.png` is the untouched 768×512 source sheet. `build_atlas.py` makes `office-atlas-assets.png`, `atlas.json`, and `sprite-atlas.js` reproducibly from documented source rectangles, using Pillow and an alpha threshold of 200 to remove low-alpha colored fringe pixels. It does not resample or invent sprite pixels. The UI role uses the intact side pose because its hat pixels are incomplete; roles have one complete pose each, so movement is translation/bob, not fabricated walk cycles. The meeting table reuses a scaled clean table sprite.
 
 Rebuild the atlas after changing source rectangles with:
 

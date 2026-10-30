@@ -57,7 +57,9 @@ export const FURNITURE = [
 export const MONITORS = [{x:463,y:403,w:127,h:37},{x:463,y:449,w:127,h:36}];
 export const COLLISIONS = [
   ...walls.map(r=>({...r,kind:'wall'})),
-  ...FURNITURE.map(f=>({x:f.x,y:f.y,w:f.w,h:f.h,kind:'furniture'})),
+  // Review agents sit in front of their monitors. Keep the desk surface
+  // collidable, but leave the lower chair/leg space open for the foot anchor.
+  ...FURNITURE.map(f=>({x:f.x,y:f.y,w:f.w,h:f.y===381&&f.sprite==='deskDual'?34:f.h,kind:'furniture'})),
   ...MONITORS.map(r=>({...r,kind:'monitor'})),
 ];
 const nodes={}, edges=[];
@@ -92,7 +94,7 @@ for(let i=0;i<8;i++) {
 // Review's lower aisle connects all four desks and a separate meeting table.
 node('review_aisle',166,441);edge('in_review','review_aisle');
 for(const [i,role] of ['sec','ux','ui','code'].entries()) {
-  const x=[51,122,193,264][i]; node(`seat_${role}`,x,441);edge(`seat_${role}`,'review_aisle');
+  const x=[51,122,193,264][i]; node(`seat_${role}`,x,425);edge(`seat_${role}`,'review_aisle');
   const mx=[75,111,210,253][i];node(`meet_${role}`,mx,475);node(`meet_turn_${role}`,mx,441);edge(`meet_turn_${role}`,'review_aisle');edge(`meet_turn_${role}`,`meet_${role}`);
 }
 export const WAYPOINTS = {nodes,edges};

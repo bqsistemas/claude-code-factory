@@ -9,7 +9,7 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
   const atlas=new Image(), backdrop=document.createElement('canvas');
   const ctx=canvas.getContext('2d'), bg=backdrop.getContext('2d');
   canvas.width=backdrop.width=MAP.width;canvas.height=backdrop.height=MAP.height;
-  let ready=false,state=officeState([]),jobs=[],raf=0,last=0,scale=1,scaleX=1,scaleY=1,liveKey='';
+  let ready=false,state=officeState([]),jobs=[],raf=0,last=0,scale=1,scaleX=1,scaleY=1,liveKey='',visibleJobIds=new Set();
   const walkers=new Map(),buttons=new Map();
   const rect=(c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
   const text=(c,value,x,y,color='#edf4ff',size=12,align='left')=>{
@@ -38,8 +38,11 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
   function paintBackdrop() {
     rect(bg,0,0,768,500,'#101c2d');
     // Blue-grey atlas tiles make the shared circulation read as a separate hallway.
-    tile(bg,'floorTile',{x:5,y:5,w:758,h:490});
-    rect(bg,4,4,760,492,'#50627a');
+    tile(bg,'floorCorridor',{x:5,y:5,w:758,h:490});
+    // Keep the shared circulation visibly tiled instead of flattening it to a
+    // solid fill; room floors below still override the tile with their own
+    // material, leaving the blue-grey texture only in corridors and thresholds.
+    tile(bg,'floorCorridor',{x:4,y:4,w:760,h:492});
     // Continuous tiled corridors connect every doorway. Fixtures never occupy them.
     for(const a of AREAS) {
       const {x,y,w,h}=a.rect;
@@ -108,7 +111,8 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
     plaque(ctx,`Merged  ${state.archive.merged}`,641,450,110,'#55ce91',10);
     plaque(ctx,`Rejected  ${state.archive.rejected}`,641,477,110,'#ed7484',10);
     const lists=[...Object.values(state.tokens),state.escalation].flat();
-    const counts=new Map(),overflowCounts=new Map(),visibleJobIds=new Set();
+    const counts=new Map(),overflowCounts=new Map();
+    visibleJobIds=new Set();
     const slots={intake:[[22,76],[92,76],[22,98]],spec:[[280,48],[350,48],[280,72]],build:[[421,48],[491,48],[421,72]],gate:[[612,110],[676,110],[612,132]],review:[[20,423],[114,423],[208,423]],approve:[[366,458],[414,458],[366,480]],merging:[[468,389],[520,389]],'awaiting-merge':[[468,438],[520,438]],'needs-info':[[24,228],[96,228],[24,250],[96,250]],'needs-human':[[588,228],[660,228],[588,250],[660,250]]};
     for(const t of lists) {
       const i=counts.get(t.stage)||0;counts.set(t.stage,i+1);
