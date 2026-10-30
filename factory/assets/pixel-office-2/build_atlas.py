@@ -26,6 +26,12 @@ BOXES = {
     # lines when the corridor material is tiled across the whole circulation shell.
     'floorCorridor': (55,374,24,24),
     'cabinet': (321,278,58,40),
+    # Lounge decor: small potted plants and armchairs (measured from the source sheet).
+    'plantSmall': (208,183,18,32), 'plantPot': (297,184,17,32),
+    'armchairOrange': (237,190,19,25), 'armchairBlue': (375,186,21,30),
+    # Speech/thought bubbles beside the desk sprites: thinking, found something, idea, done.
+    'bubbleThink': (642,67,18,17), 'bubbleAlert': (672,66,19,20),
+    'bubbleIdea': (702,66,18,19), 'bubbleDone': (733,66,18,20),
 }
 source=Image.open(ROOT/'PixelOfficeAssets.png').convert('RGBA')
 assert source.size == (768,512), 'Use the original-resolution source PNG'

@@ -1,0 +1,5 @@
+name = "factory-builder"
+description = "Factory builder worker: implement one round in the existing worktree and publish its draft PR."
+developer_instructions = '''
+Read factory/project.md, .claude/agents/builder.md, and all relevant files in the supplied job and round folders. Ignore Claude frontmatter and hooks, but follow the role body exactly. Work only in the supplied worktree and write only build.md in the main checkout. Never edit job.json or board.json, never merge, and never push main; use the factory/<id> branch, commit, push, and create or update the draft PR as the role requires. Reply with the first line of build.md.
+'''

@@ -47,6 +47,8 @@ export const FURNITURE = [
   prop('sofaBlue',228,198,.98),prop('sofaGreen',477,198,.98),
   prop('table',358,274,1.0),prop('vending',223,255,.82),prop('cooler',511,257,.82),
   prop('plantTall',237,193,.58),prop('plant',488,193,.54),
+  // Lounge decor sits in the gaps between home slots, clear of aisles, points and labels.
+  prop('armchairOrange',301,212,.8),prop('plantSmall',318,206,.8),prop('armchairBlue',438,204),
   prop('sofaBlue',577,205,.9),prop('table',692,205,.92),prop('plantTall',720,267,.8),
   ...[22,97,172,247].map(x=>prop('deskDual',x,381,.78)),
   prop('meetingTable',137,451,.82),prop('plantTall',15,441,.72),prop('plantTall',292,441,.72),
@@ -91,6 +93,16 @@ for(let i=0;i<8;i++) {
   const turn=`lounge_turn_${i%4}`; if(!nodes[turn]) {node(turn,x,264);edge(turn,'lounge_spine');}
   node(`lounge_${i+1}`,x,y);edge(`lounge_${i+1}`,turn);
 }
+// Lounge points of interest: leaf nodes in front of the furniture, used only by idle wandering.
+// Sofas are sat on from the front edge; the renderer lifts the sprite while dwelling there.
+export const LOUNGE_POINTS = [
+  {id:'water',node:'lounge_poi_water',x:498,y:276,pose:'stand',turn:'lounge_turn_3'},
+  {id:'snacks',node:'lounge_poi_snacks',x:262,y:280,pose:'stand',turn:'lounge_turn_0'},
+  {id:'sofa-blue',node:'lounge_poi_sofa_blue',x:253,y:242,pose:'sit',turn:'lounge_turn_0'},
+  {id:'sofa-green',node:'lounge_poi_sofa_green',x:503,y:242,pose:'sit',turn:'lounge_turn_3'},
+  {id:'table',node:'lounge_poi_table',x:320,y:282,pose:'stand',turn:'lounge_turn_1'},
+];
+for(const p of LOUNGE_POINTS){node(p.node,p.x,p.y);edge(p.turn,p.node);}
 // Review's lower aisle connects all four desks and a separate meeting table.
 node('review_aisle',166,441);edge('in_review','review_aisle');
 for(const [i,role] of ['sec','ux','ui','code'].entries()) {

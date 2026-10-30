@@ -3,7 +3,7 @@
 // and does each transition's side effects: issue comments, labels, the worktree,
 // the merge.
 //
-//   job new <issue>                    print the job id; idempotent per issue
+//   job new <issue> [--provider <name>] print the job id; idempotent per issue
 //   job <id> to <stage> [--note <t>]   one transition; prints "<id> <stage>"
 //   job <id> sync                      refresh gate/reviews from round files, cost from transcripts
 //   job summary                        one line per job, then a total
@@ -18,7 +18,7 @@ import { STAGE_COLUMNS, formatDuration } from '../activity.js';
 import { jobCost, readTranscripts } from './cost.js';
 import { gate as runGate } from './gate.js';
 import { parseIntake } from './intake.js';
-import { route } from './route.js';
+import { DEFAULT_PROVIDER, providerConfig, route, stageModels } from './route.js';
 import {
   JOB_ID, Refused, Usage, configLanguage, factoryRoot, firstLine, isMain, jobDir, loadConfig, mustRun, now, readText, run,
   runCli, transcriptsDir, writeAtomic,
@@ -476,11 +476,15 @@ const TRANSITIONS = {
   'intake>spec'(c, job) {
     const { intake, text } = readIntake(c, job, 'ACCEPT');
     const decision = 'ACCEPT';
-    const agents = route(c.config, intake);
+    const provider = job.provider ?? c.config.default_provider ?? DEFAULT_PROVIDER;
+    providerConfig(c.config, provider);
+    const agents = route(c.config, intake, provider);
     ensureWorktree(c, job);
     postIntake(c, job, text, decision);
     setIntake(job, intake);
     job.agents = agents;
+    job.provider = provider;
+    job.models = { ...stageModels(c.config, provider), ...agents };
   },
   'intake>needs-info'(c, job) {
     const { intake, text } = readIntake(c, job, 'NEEDS-INFO');
@@ -652,9 +656,17 @@ function slug(title) {
   return words.slice(0, 4).join('-') || 'issue';
 }
 
-function newJob(c, n) {
+function newJob(c, n, requestedProvider) {
+  const provider = requestedProvider ?? c.config.default_provider ?? DEFAULT_PROVIDER;
+  providerConfig(c.config, provider);
   const existing = allJobs(c.root).find((j) => j.issue === n);
-  if (existing) return existing.id;
+  if (existing) {
+    const existingProvider = existing.provider ?? DEFAULT_PROVIDER;
+    if (requestedProvider && existingProvider !== provider) {
+      throw new Refused(`issue #${n} already belongs to provider ${existingProvider}`);
+    }
+    return existing.id;
+  }
   const issue = fetchIssue(c, n);
   checkTrusted(issue);
   const dir = join(c.root, 'factory/jobs');
@@ -665,7 +677,7 @@ function newJob(c, n) {
   const job = {
     id, issue: n, title, pr: null, branch: `factory/${id}`, worktree: join(c.root, '.worktrees', id),
     port: 3000 + number, stage: 'intake', round: 0, max_rounds: c.config.max_rounds ?? 3,
-    intake: null, agents: null, gate: null, reviews: {}, history: [],
+    provider, intake: null, agents: null, models: stageModels(c.config, provider), gate: null, reviews: {}, history: [],
     decision: null, note: '', parked_from: null, cost_usd: 0, started: now(), finished: null, updated: now(),
   };
   writeAtomic(file(c, job, 'issue.md'), issueMarkdown(issue));
@@ -693,14 +705,15 @@ function summary(c) {
   return lines.join('\n');
 }
 
-const USAGE = 'job new <issue> | job <id> to <stage> [--note <text>] | job <id> sync | job summary';
+const USAGE = 'job new <issue> [--provider <name>] | job <id> to <stage> [--note <text>] | job <id> sync | job summary';
 
 function main(args) {
   const [first, second, third, ...rest] = args;
   let out;
-  if (first === 'new' && args.length === 2) {
+  if (first === 'new' && (args.length === 2 || args.length === 4)) {
     if (!/^[1-9]\d*$/.test(second ?? '')) throw new Usage(USAGE);
-    out = newJob(context(), Number(second));
+    if (args.length === 4 && third !== '--provider') throw new Usage(USAGE);
+    out = newJob(context(), Number(second), args.length === 4 ? rest[0] : undefined);
   } else if (first === 'summary' && args.length === 1) {
     out = summary(context());
   } else if (JOB_ID.test(first ?? '') && second === 'sync' && args.length === 2) {

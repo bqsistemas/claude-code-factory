@@ -7,6 +7,10 @@ for (const [from, to] of WAYPOINTS.edges) {
   adjacent.get(to).push(from);
 }
 
+export const WALK_SPEED = 90;
+// Idle wandering is a calm stroll, well under the work-walk speed.
+export const WANDER_SPEED = 38;
+
 export function route(from, to) {
   if (!adjacent.has(from) || !adjacent.has(to)) return [];
 
@@ -67,8 +71,8 @@ export function retargetWalker(walker, target, reduced = false) {
   walker.target = target;
 }
 
-export function advanceWalker(walker, dt) {
-  let distance = 90 * Math.max(0, Math.min(0.1, dt));
+export function advanceWalker(walker, dt, speed = WALK_SPEED) {
+  let distance = speed * Math.max(0, Math.min(0.1, dt));
   while (walker.queue.length && distance > 0) {
     const destination = WAYPOINTS.nodes[walker.queue[0]];
     const dx = destination.x - walker.x;

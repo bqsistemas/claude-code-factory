@@ -5,6 +5,7 @@
   "max_rounds": 3,
   "auto_merge": true,
   "language": "es",
+  "default_provider": "claude",
   "models": { "intake": "fable", "spec-writer": "opus", "approver": "opus" },
   "routing": {
     "builder": { "low": "sonnet", "medium": "sonnet", "high": "opus" },
@@ -13,6 +14,32 @@
       "ux": { "surface": "ui", "model": "sonnet" },
       "ui": { "surface": "ui", "model": "haiku" },
       "security": { "surface": "security", "model": "opus" }
+    }
+  },
+  "providers": {
+    "claude": {
+      "models": { "intake": "fable", "spec-writer": "opus", "approver": "opus" },
+      "routing": {
+        "builder": { "low": "sonnet", "medium": "sonnet", "high": "opus" },
+        "reviewers": {
+          "code": { "always": true, "model": { "low": "haiku", "medium": "sonnet", "high": "sonnet" } },
+          "ux": { "surface": "ui", "model": "sonnet" },
+          "ui": { "surface": "ui", "model": "haiku" },
+          "security": { "surface": "security", "model": "opus" }
+        }
+      }
+    },
+    "codex": {
+      "models": { "intake": "gpt-6-luna", "spec-writer": "gpt-6-luna", "approver": "gpt-6.1-sol" },
+      "routing": {
+        "builder": { "low": "gpt-6-luna", "medium": "gpt-6-luna", "high": "gpt-6.1-sol" },
+        "reviewers": {
+          "code": { "always": true, "model": { "low": "gpt-6-luna", "medium": "gpt-6-luna", "high": "gpt-6.1-sol" } },
+          "ux": { "surface": "ui", "model": "gpt-6-luna" },
+          "ui": { "surface": "ui", "model": "gpt-6-luna" },
+          "security": { "surface": "security", "model": "gpt-6.1-sol" }
+        }
+      }
     }
   },
   "prices": {

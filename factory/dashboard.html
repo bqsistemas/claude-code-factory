@@ -66,8 +66,11 @@
   .theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
                   border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
                   font-size: 14px; cursor: pointer; }
-  .theme-toggle:hover { border-color: var(--muted); }
-  .theme-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .guide-toggle { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+                  border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+                  font-size: 14px; cursor: pointer; }
+  .theme-toggle:hover, .guide-toggle:hover { border-color: var(--muted); }
+  .theme-toggle:focus-visible, .guide-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .status { color: var(--muted); font-size: 12px; white-space: nowrap; min-width: 0; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
   .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
                     background: var(--pass); margin-right: 6px; vertical-align: 1px; }
@@ -240,7 +243,7 @@
   .scrim.open { opacity: 1; pointer-events: auto; }
   .drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(760px, 100%); display: flex; flex-direction: column;
             background: var(--panel); border-left: 1px solid var(--line); box-shadow: none;
-            transform: translateX(100%); transition: transform .22s ease; }
+            transform: translateX(100%); transition: transform .22s ease; z-index: 11; }
   .drawer.open { transform: none; box-shadow: -16px 0 48px var(--shadow); }
   .drawer-head { display: flex; align-items: flex-start; gap: 12px; padding: 18px 22px 12px; border-bottom: 1px solid var(--line); }
   .drawer-head .title { font-size: 16px; margin: 2px 0 0; }
@@ -271,6 +274,48 @@
   .drawer-links { margin-top: 4px; }
   .missing-doc { color: var(--muted); font-style: italic; }
 
+  /* The guide is a calm, full-screen reference page opened from the header. */
+  .guide { position: fixed; inset: 12px; z-index: 12; display: flex; flex-direction: column; min-width: 0;
+           background: var(--bg); border: 1px solid color-mix(in srgb, var(--active) 22%, var(--line)); border-radius: 18px;
+           box-shadow: 0 24px 80px var(--shadow); opacity: 0; pointer-events: none;
+           transform: translateY(12px) scale(.99); transition: opacity .2s ease, transform .2s ease; }
+  .guide.open { opacity: 1; pointer-events: auto; transform: none; }
+  .guide-head { display: flex; align-items: flex-start; gap: 14px; padding: 22px 28px 18px; border-bottom: 1px solid var(--line); }
+  .guide-head .eyebrow { display: block; margin-bottom: 4px; color: var(--active); font: 700 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+  .guide-head h2 { margin: 0; font-size: clamp(20px, 2.5vw, 30px); line-height: 1.15; letter-spacing: -.02em; }
+  .guide-head p { max-width: 760px; margin: 8px 0 0; color: color-mix(in srgb, var(--ink) 76%, var(--muted)); font-size: 14px; line-height: 1.5; }
+  .guide-content { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: 18px; overflow: auto; padding: 22px 28px 40px; background: var(--bg); }
+  .guide-section { min-width: 0; padding: 18px; border: 1px solid color-mix(in srgb, var(--active) 18%, var(--line)); border-radius: 14px; background: var(--panel); box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow) 45%, transparent); }
+  .guide-section.full { grid-column: 1 / -1; }
+  .guide-section h3 { margin: 0 0 7px; font-size: 17px; color: var(--ink); }
+  .guide-section p { margin: 7px 0; color: color-mix(in srgb, var(--ink) 74%, var(--muted)); line-height: 1.55; }
+  .guide-section ul { margin: 8px 0 0; padding-left: 19px; color: color-mix(in srgb, var(--ink) 74%, var(--muted)); line-height: 1.5; }
+  .guide-section li + li { margin-top: 6px; }
+  .guide-section strong { color: var(--ink); }
+  .guide-pipeline { display: grid; grid-template-columns: repeat(7, minmax(88px, 1fr)); gap: 8px; margin-top: 14px; }
+  .guide-step { position: relative; min-height: 78px; padding: 11px 9px 8px; border: 1px solid var(--line); border-top: 3px solid color-mix(in srgb, var(--active) 72%, var(--line)); border-radius: 10px; background: var(--col); }
+  .guide-step:not(:last-child)::after { content: "→"; position: absolute; right: -12px; top: 26px; z-index: 1; color: var(--muted); font-weight: 700; }
+  .guide-step b { display: block; color: var(--ink); font-size: 12px; }
+  .guide-step span { display: block; margin-top: 5px; color: color-mix(in srgb, var(--ink) 72%, var(--muted)); font-size: 12px; line-height: 1.4; }
+  .guide-agents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+  .guide-agent { padding: 10px; border-radius: 10px; background: var(--col); border: 1px solid var(--line); border-left: 3px solid color-mix(in srgb, var(--active) 62%, var(--line)); }
+  .guide-agent b { display: block; margin-bottom: 3px; color: var(--ink); }
+  .guide-agent span { color: color-mix(in srgb, var(--ink) 72%, var(--muted)); font-size: 12px; line-height: 1.4; }
+  .guide-code { margin: 10px 0 0; padding: 12px 14px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; }
+  .guide-callout { margin-top: 12px; padding: 11px 13px; border-left: 3px solid var(--active); border-radius: 6px; background: color-mix(in srgb, var(--active) 10%, var(--panel)); color: var(--muted); }
+  .guide-callout strong { color: var(--ink); }
+  @media (max-width: 980px) {
+    .guide-content { grid-template-columns: 1fr; }
+    .guide-pipeline { grid-template-columns: repeat(4, minmax(110px, 1fr)); }
+    .guide-step:nth-child(4)::after { display: none; }
+  }
+  @media (max-width: 640px) {
+    .guide { inset: 0; border-radius: 0; }
+    .guide-head { padding: 18px 16px 14px; }
+    .guide-content { padding: 16px 16px 28px; }
+    .guide-pipeline, .guide-agents { grid-template-columns: 1fr 1fr; }
+    .guide-step:nth-child(2)::after, .guide-step:nth-child(6)::after { display: none; }
+  }
   .agents { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0; }
   .agent { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%;
            font-size: 11px; line-height: 16px; padding: 0 8px 0 2px; border-radius: 999px;
@@ -297,6 +342,7 @@
     .agent, .agent .avatar, .chip.pending { animation: none; }
     .octo, .octo-tentacle, .octo-eye { animation: none; }
     .card, .col { transition: none; }
+    .guide, .drawer { transition: none; }
     .card:hover { transform: none; }
   }
 </style>
@@ -314,6 +360,9 @@
   </span>
   <span class="top-end">
     <span class="status" id="status">connecting…</span>
+    <button class="guide-toggle" id="guide-toggle" type="button" aria-label="Open factory guide" aria-controls="guide" aria-expanded="false" title="How the factory works">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8M8 11h8M8 15h5"/></svg>
+    </button>
     <button class="theme-toggle" id="theme-toggle" type="button"><span id="theme-icon" aria-hidden="true"></span></button>
     <span class="tag" id="demo" hidden>DEMO</span>
     <a class="parked" id="parked" href="#col-needs-human" hidden></a>
@@ -344,6 +393,83 @@
   <div class="drawer-summary" id="d-summary"></div>
   <nav class="files" id="files" role="tablist"></nav>
   <article class="doc" id="doc" role="tabpanel" tabindex="0"></article>
+</aside>
+
+<aside class="guide" id="guide" aria-hidden="true" aria-labelledby="guide-title" role="dialog" aria-modal="true">
+  <div class="guide-head">
+    <div>
+      <span class="eyebrow">AI Software Factory</span>
+      <h2 id="guide-title">Cómo funciona la Factory</h2>
+      <p>Una guía simple para entender qué pasa con cada issue, qué hace cada agente y cómo trabajar con Claude Code o Codex.</p>
+    </div>
+    <button class="close" id="guide-close" type="button" aria-label="Cerrar guía">×</button>
+  </div>
+  <div class="guide-content" id="guide-content">
+    <section class="guide-section full" id="guide-pipeline">
+      <h3>El viaje de un issue, de la idea al merge</h3>
+      <p>La Factory toma un issue de GitHub con la etiqueta <code>factory</code> y lo acompaña hasta que queda listo para producción. Cada paso deja una evidencia visible y el siguiente comienza solo cuando el anterior está listo.</p>
+      <div class="guide-pipeline" aria-label="Pipeline de la Factory">
+        <div class="guide-step"><b>1 · Intake</b><span>Entiende el pedido y detecta si falta información.</span></div>
+        <div class="guide-step"><b>2 · Spec</b><span>Convierte la idea en un plan claro y comprobable.</span></div>
+        <div class="guide-step"><b>3 · Build</b><span>Implementa el cambio en una rama y prepara el PR.</span></div>
+        <div class="guide-step"><b>4 · Gate</b><span>Corre los checks automáticos antes de revisar.</span></div>
+        <div class="guide-step"><b>5 · Review</b><span>Varios revisores analizan el mismo cambio en paralelo.</span></div>
+        <div class="guide-step"><b>6 · Approve</b><span>Un agente reúne los veredictos y recomienda aprobar o corregir.</span></div>
+        <div class="guide-step"><b>7 · Merge</b><span>El PR se integra, o queda esperando una decisión humana.</span></div>
+      </div>
+      <div class="guide-callout"><strong>Idea clave:</strong> los agentes hacen el trabajo especializado, pero la Factory mantiene una sola fuente de verdad: el estado del job, sus archivos y el PR.</div>
+    </section>
+
+    <section class="guide-section" id="guide-agents">
+      <h3>Qué hace cada agente</h3>
+      <div class="guide-agents">
+        <div class="guide-agent"><b>Intake</b><span>Lee el issue, resume el problema y pide datos cuando no alcanza para empezar.</span></div>
+        <div class="guide-agent"><b>Spec writer</b><span>Define alcance, criterios de aceptación y una estrategia de implementación.</span></div>
+        <div class="guide-agent"><b>Builder</b><span>Escribe el código, ejecuta pruebas y abre o actualiza el PR.</span></div>
+        <div class="guide-agent"><b>Security reviewer</b><span>Busca riesgos de permisos, datos, secretos y validaciones.</span></div>
+        <div class="guide-agent"><b>UX reviewer</b><span>Revisa que el flujo sea claro, accesible y fácil de usar.</span></div>
+        <div class="guide-agent"><b>UI reviewer</b><span>Comprueba consistencia visual, estados y adaptación a pantallas.</span></div>
+        <div class="guide-agent"><b>Code reviewer</b><span>Analiza calidad, errores, regresiones y mantenibilidad.</span></div>
+        <div class="guide-agent"><b>Approver</b><span>Lee todos los veredictos y decide si el job puede pasar a merge.</span></div>
+      </div>
+    </section>
+
+    <section class="guide-section" id="guide-states">
+      <h3>Cómo leer los estados</h3>
+      <ul>
+        <li><strong>Needs info:</strong> el issue necesita una respuesta antes de continuar.</li>
+        <li><strong>Gate FAIL:</strong> una prueba falló; el job vuelve a Build con el motivo.</li>
+        <li><strong>Changes:</strong> un reviewer pidió correcciones; el builder vuelve a trabajar.</li>
+        <li><strong>Needs human:</strong> hace falta una decisión o acción tuya.</li>
+        <li><strong>Awaiting merge:</strong> el PR está listo y espera que una persona haga merge.</li>
+        <li><strong>Merged / Rejected:</strong> el job terminó y queda registrado en el historial.</li>
+      </ul>
+    </section>
+
+    <section class="guide-section" id="guide-commands">
+      <h3>Cómo usarla</h3>
+      <p>Primero crea o etiqueta un issue en GitHub con <code>factory</code>. Después elegí el comando según el asistente que estés usando:</p>
+      <pre class="guide-code">Claude Code&#10;  /factory run&#10;  /factory issue 37&#10;  /factory add una nueva funcionalidad&#10;  /factory rework 37&#10;&#10;Codex&#10;  $factory run&#10;  $factory issue 37&#10;  $factory add una nueva funcionalidad&#10;  $factory rework 37</pre>
+      <p>En Codex, <code>$factory</code> es una skill del repositorio. En Claude Code, <code>/factory</code> es el comando existente. Ambos usan la misma Factory, el mismo job y las mismas reglas.</p>
+    </section>
+
+    <section class="guide-section" id="guide-human">
+      <h3>Cuándo intervenís vos</h3>
+      <ul>
+        <li>Respondé el issue si Intake marca que falta información.</li>
+        <li>Revisá y hacé merge del PR cuando el job quede esperando aprobación.</li>
+        <li>Si pedís cambios, usá el flujo de rework para que el builder reciba comentarios confiables.</li>
+        <li>Usá los detalles de cada tarjeta para leer intake, spec, build, checks y reviews.</li>
+      </ul>
+      <div class="guide-callout"><strong>Consejo:</strong> no hace falta memorizar los archivos internos. Mirá el tablero como una conversación: cada columna responde “¿qué falta para que este job avance?”.</div>
+    </section>
+
+    <section class="guide-section" id="guide-safety">
+      <h3>Claude y Codex, sin mezclar responsabilidades</h3>
+      <p>El proveedor elegido queda guardado en cada job. La configuración de <code>factory/config.json</code> decide qué modelo usa cada rol para Claude o Codex, mientras que el gate y las transiciones siguen siendo los mismos.</p>
+      <p><strong>Importante:</strong> no ejecutes Claude y Codex sobre el mismo job al mismo tiempo. Elegí un asistente por job para evitar que dos sesiones escriban el mismo estado.</p>
+    </section>
+  </div>
 </aside>
 
 <script>
@@ -561,6 +687,7 @@ async function load(job, file) {
 }
 
 let returnFocus = null;
+let guideReturnFocus = null;
 
 async function openDrawer(id, file) {
   const job = (board.jobs || []).find(j => j.id === id);
@@ -598,6 +725,27 @@ function closeDrawer() {
   returnFocus = null;
 }
 
+function openGuide() {
+  if ($('guide').classList.contains('open')) return;
+  if ($('drawer').classList.contains('open')) closeDrawer();
+  guideReturnFocus = document.activeElement;
+  $('guide').classList.add('open');
+  $('guide').setAttribute('aria-hidden', 'false');
+  $('guide-toggle').setAttribute('aria-expanded', 'true');
+  $('scrim').classList.add('open');
+  $('guide-close').focus();
+}
+
+function closeGuide() {
+  const wasOpen = $('guide').classList.contains('open');
+  $('guide').classList.remove('open');
+  $('guide').setAttribute('aria-hidden', 'true');
+  $('guide-toggle').setAttribute('aria-expanded', 'false');
+  $('scrim').classList.remove('open');
+  if (wasOpen && guideReturnFocus && document.contains(guideReturnFocus)) guideReturnFocus.focus();
+  guideReturnFocus = null;
+}
+
 $('board').addEventListener('click', e => {
   if (e.target.closest('a')) return;   // issue and PR links open GitHub
   const c = e.target.closest('.card, .row');
@@ -622,8 +770,17 @@ $('files').addEventListener('keydown', async e => {   // arrow keys move between
   $('files').querySelector(`[data-file="${CSS.escape(next)}"]`)?.focus();
 });
 $('close').addEventListener('click', closeDrawer);
-$('scrim').addEventListener('click', closeDrawer);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+$('guide-toggle').addEventListener('click', openGuide);
+$('guide-close').addEventListener('click', closeGuide);
+$('scrim').addEventListener('click', () => {
+  if ($('guide').classList.contains('open')) closeGuide();
+  else closeDrawer();
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('guide').classList.contains('open')) closeGuide();
+  else closeDrawer();
+});
 
 // --- tiny markdown renderer (headings, lists, tables, code, quotes) ---------
 

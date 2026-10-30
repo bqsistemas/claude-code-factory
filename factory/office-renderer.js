@@ -3,6 +3,8 @@ import { officeState, hitTargets, describeOffice } from './office.js';
 import { MAP, AREAS, DOORS, FURNITURE, WAYPOINTS, STAGE_REGIONS, SHORT, COLORS, viewportOffice } from './office-map.js';
 import { ATLAS_URL, SPRITES, CHARACTER_FOR } from './sprite-atlas.js';
 import { retargetWalker, advanceWalker } from './office-navigation.js';
+import { createWanderDirector, sofaLift, planWake } from './office-wander.js';
+import { BUBBLES, createBubbleDirector } from './office-bubbles.js';
 
 export function createOffice({ stage, canvas, hits, live, status, openJob }) {
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -10,7 +12,8 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
   const ctx=canvas.getContext('2d'), bg=backdrop.getContext('2d');
   canvas.width=backdrop.width=MAP.width;canvas.height=backdrop.height=MAP.height;
   let ready=false,state=officeState([]),jobs=[],raf=0,last=0,scale=1,scaleX=1,scaleY=1,liveKey='',visibleJobIds=new Set();
-  const walkers=new Map(),buttons=new Map();
+  const walkers=new Map(),buttons=new Map(),director=createWanderDirector(Math.random),bubbles=createBubbleDirector(Math.random);
+  let wakeTimer=0;
   const rect=(c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
   const text=(c,value,x,y,color='#edf4ff',size=12,align='left')=>{
     c.font=`600 ${size}px system-ui, sans-serif`;c.fillStyle=color;c.textAlign=align;c.textBaseline='middle';c.fillText(value,x,y);
@@ -151,9 +154,14 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
     }
     for(const a of Object.keys(state.agents).sort((a,b)=>walkers.get(a).y-walkers.get(b).y)) {
       const w=walkers.get(a),s=SPRITES[CHARACTER_FOR[a]],bob=w.queue.length&&!reduced.matches?Math.floor(now/150)%2:0;
-      const x=Math.round(w.x-s.w/2),y=Math.round(w.y-s.h-bob);
+      // Seated on a sofa: lift the sprite over the cushion; the name label stays at ground level.
+      const lift=sofaLift(w);
+      const x=Math.round(w.x-s.w/2),y=Math.round(w.y-s.h-bob-lift);
       rect(ctx,x+1,w.y-1,s.w-2,3,'#674d3f');
       if(ready)sprite(ctx,CHARACTER_FOR[a],x,y);else rect(ctx,x+4,y+4,s.w-8,s.h-4,COLORS[a]);
+      // Thought bubble above the head, clear of the name label (below the feet) and room signs.
+      const kind=bubbles.get(a,w);
+      if(kind&&ready){const b=SPRITES[BUBBLES[kind].sprite];sprite(ctx,BUBBLES[kind].sprite,Math.round(w.x-b.w/2),Math.max(2,y-b.h-1));}
       const label=SHORT[a],labelSize=scale<.65?16:13;ctx.font=`700 ${labelSize}px system-ui`;const tw=Math.max(30,ctx.measureText(label).width+12);
       const tx=Math.min(MAP.width-tw-2,Math.max(2,w.x-tw/2)),ty=w.y-4;
       // Place nameplates beneath feet, not over faces; the fixed lounge rows have a safe gap.
@@ -167,15 +175,31 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
       Object.assign(btn.style,{left:`${viewport.offsetX+b.x*scaleX}px`,top:`${viewport.offsetY+b.y*scaleY}px`,width:`${b.w*scaleX}px`,height:`${b.h*scaleY}px`});
     }
   }
-  function isAnimated(){return !reduced.matches&&([...walkers.values()].some(w=>w.queue.length)||state.gate.status==='running'||state.merging.status==='merging');}
-  function frame(now){const dt=last?Math.min(.1,(now-last)/1000):0;last=now;for(const w of walkers.values())advanceWalker(w,dt);draw(now);raf=isAnimated()?requestAnimationFrame(frame):0;}
-  function kick(){if(!raf&&isAnimated()){last=performance.now();raf=requestAnimationFrame(frame);}}
+  const moving=()=>[...walkers.values()].some(w=>w.queue.length);
+  const agentsNow=()=>state.agents;
+  // Rest/dwell periods need no frames: one timer wakes the loop when the next decision is due.
+  const wake=()=>Math.min(director.nextWake(walkers),bubbles.nextWake());
+  const plan=(now=performance.now())=>planWake({reduced:reduced.matches,hidden:document.hidden,moving:moving()||state.gate.status==='running'||state.merging.status==='merging',busy:false,wake:wake(),now});
+  const isAnimated=now=>plan(now).frame;
+  function schedule() {
+    clearTimeout(wakeTimer);wakeTimer=0;
+    const {timerMs}=plan();
+    if(timerMs!==null)wakeTimer=setTimeout(()=>{wakeTimer=0;kick();},timerMs);
+  }
+  function frame(now){
+    const dt=last?Math.min(.1,(now-last)/1000):0;last=now;
+    director.tick(now,agentsNow(),walkers);bubbles.tick(now,id=>walkers.get(id).queue.length>0);
+    for(const [a,w] of walkers)advanceWalker(w,dt,director.speed(a,w));
+    draw(now);raf=isAnimated(now)?requestAnimationFrame(frame):0;
+    if(!raf)schedule();
+  }
+  function kick(){if(raf)return;if(isAnimated()){last=performance.now();raf=requestAnimationFrame(frame);}else schedule();}
   function update(nextJobs) {
     jobs=Array.isArray(nextJobs)?nextJobs:[];state=officeState(jobs);
     for(const [agent,a] of Object.entries(state.agents)) {
       if(!walkers.has(agent))walkers.set(agent,{...WAYPOINTS.nodes[a.node],node:a.node,target:a.node,queue:[]});
-      retargetWalker(walkers.get(agent),a.node,reduced.matches);
     }
+    director.sync(state.agents,walkers,reduced.matches);bubbles.sync(state.agents,reduced.matches);
     const keep=new Set();
     for(const t of hitTargets(state,jobs)) {
       const key=`${t.kind}:${t.key}`;keep.add(key);let btn=buttons.get(key);
@@ -193,11 +217,18 @@ export function createOffice({ stage, canvas, hits, live, status, openJob }) {
     const existing=new Map([...status.children].map(e=>[e.dataset.key,e]));
     for(const [k,t] of desired){let b=existing.get(k);if(!b){b=document.createElement(t.id?'button':'span');b.dataset.key=k;if(t.id)b.type='button';status.appendChild(b);}b.textContent=t.label;b.style.setProperty('--role-color',t.color||'#7a94b3');if(t.id)b.dataset.id=t.id;}
     for(const [k,b] of existing)if(!desired.has(k))b.remove();
-    draw();kick();
+    draw();kick();schedule();
   }
   hits.addEventListener('click',e=>{const btn=e.target.closest('.hit');if(btn)openJob(btn.dataset.id);});
   status.addEventListener('click',e=>{const btn=e.target.closest('button[data-id]');if(btn)openJob(btn.dataset.id);});
-  reduced.addEventListener('change',()=>{if(reduced.matches){cancelAnimationFrame(raf);raf=0;for(const [a,w] of walkers)retargetWalker(w,state.agents[a].node,true);}draw();kick();});
+  reduced.addEventListener('change',()=>{
+    if(reduced.matches){cancelAnimationFrame(raf);raf=0;clearTimeout(wakeTimer);wakeTimer=0;director.sync(state.agents,walkers,true);bubbles.sync(state.agents,true);draw();}
+    else update(jobs);
+  });
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden){cancelAnimationFrame(raf);raf=0;clearTimeout(wakeTimer);wakeTimer=0;}
+    else{last=0;kick();schedule();}
+  });
   if(typeof ResizeObserver==='function')new ResizeObserver(()=>draw()).observe(stage);else window.addEventListener('resize',()=>draw());
   atlas.onload=()=>{ready=true;paintBackdrop();draw();};
   atlas.onerror=()=>{status.textContent='Office atlas unavailable; job details remain available.';};
