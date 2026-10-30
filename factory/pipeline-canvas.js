@@ -7,7 +7,7 @@ export const CANVAS_STAGES = Object.freeze([
 
 const SOURCE_STAGE = Object.freeze({
   'needs-info': 'intake', 'awaiting-merge': 'merge', 'merging': 'merge',
-  'needs-human': 'needs-human', merged: 'merge', rejected: 'merge',
+  'needs-human': 'needs-human', merged: 'merge',
 });
 const STAGE_AGENTS = Object.freeze({ intake: 'intake', spec: 'spec-writer', build: 'builder', gate: 'builder', review: 'reviewers', approve: 'approver', merge: 'approver' });
 const REVIEWERS = Object.freeze(['security', 'ux', 'ui', 'code']);
@@ -18,6 +18,23 @@ const display = (value) => typeof value === 'string' && value.trim() ? value : D
 
 function mappedStage(job) {
   const stage = typeof job?.stage === 'string' ? job.stage : '';
+  if (stage === 'rejected') {
+    if (job.intake?.decision === 'REJECT') return 'intake';
+    const rounds = Array.isArray(job.history) ? job.history : [];
+    const reviewEvidence = [...rounds.map((round) => round?.reviews), job.reviews]
+      .filter((reviews) => isObject(reviews) && Object.keys(reviews).length > 0);
+    if (reviewEvidence.length) {
+      const latestReviews = reviewEvidence.at(-1);
+      const routedReviewers = isObject(job.agents?.reviewers) ? Object.keys(job.agents.reviewers) : [];
+      return routedReviewers.length > 0 && routedReviewers.every((name) => latestReviews[name] === 'PASS')
+        ? 'approve'
+        : 'review';
+    }
+    if (job.gate || rounds.some((round) => round?.gate)) return 'gate';
+    if (job.pr || (number(job.round) && job.round > 0)) return 'build';
+    if (job.intake?.decision === 'ACCEPT') return 'spec';
+    return 'intake';
+  }
   if (stage === 'needs-human') {
     const from = typeof job.parked_from === 'string' ? job.parked_from : '';
     const parkedStage = SOURCE_STAGE[from] || from;

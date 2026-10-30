@@ -15,6 +15,16 @@ test('AC-1: pipeline stages stay ordered and derive progress from the selected j
     const stages = derivePipeline({ stage: 'needs-human', parked_from });
     assert.deepEqual(stages.map(({ state }) => state), ['complete', 'complete', 'complete', 'complete', 'complete', 'complete', 'blocked']);
   }
+  const intakeRejected = derivePipeline({ stage: 'rejected', intake: { decision: 'REJECT' }, round: 0, history: [] });
+  assert.deepEqual(intakeRejected.map(({ state }) => state), ['blocked', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending']);
+  const prClosedBeforeApproval = derivePipeline({
+    stage: 'rejected', pr: 42, round: 1, gate: 'PASS',
+    reviews: { code: 'PASS', ux: 'PASS', ui: 'PASS', security: 'PASS' }, decision: null,
+    agents: { reviewers: { code: 'gpt', ux: 'gpt', ui: 'gpt', security: 'gpt' } },
+  });
+  assert.deepEqual(prClosedBeforeApproval.map(({ state }) => state), ['complete', 'complete', 'complete', 'complete', 'complete', 'blocked', 'pending']);
+  assert.equal(stageDetails({ stage: 'rejected', pr: 42, gate: 'PASS', reviews: { code: 'PASS', ux: 'PASS' }, agents: { reviewers: { code: 'x', ux: 'x' } } }, 'approve').progress, '5/7 stages');
+  assert.equal(stageDetails({ stage: 'rejected', intake: { decision: 'REJECT' } }, 'intake').progress, '0/7 stages');
 });
 
 test('AC-2: accessible job and stage controls update the pipeline selection', () => {
