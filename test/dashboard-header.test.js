@@ -114,7 +114,7 @@ test('AC-7: header rules use no literal hex colors', () => {
   assert.ok(n > 10);
 });
 
-test('AC-3: hidden badges stay hidden despite their display rules', () => {
+test('hidden badges stay hidden despite their display rules', () => {
   assert.match(rule('.tag'), /display:\s*inline-flex/);
   assert.match(rule('.tag[hidden]'), /display:\s*none/);
   assert.match(rule('.parked[hidden]'), /display:\s*none/);
