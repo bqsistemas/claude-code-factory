@@ -97,12 +97,13 @@
   .stat { display: inline-flex; align-items: center; flex: none; gap: 8px; height: 32px; padding: 0 10px 0 5px; border-radius: 10px;
           background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
   .stat .ico { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%;
-               color: var(--ink); background: color-mix(in srgb, currentColor 18%, var(--panel)); }
+               background: color-mix(in srgb, currentColor 18%, var(--panel)); }
   .stat .ico svg { width: 13px; height: 13px; }
-  .ico-jobs { color: var(--ink); }
-  .ico-running { color: var(--pass); }
-  .ico-agents { color: var(--active); }
-  .ico-cost { color: var(--changes); }
+  .stat .ico-jobs { color: var(--ink); }
+  .stat .ico-running { color: var(--pass); }
+  .stat .ico-agents { color: var(--active); }
+  .stat .ico-cost { color: var(--changes); }
+  .tag[hidden], .parked[hidden] { display: none; }
   .stat .txt { display: flex; flex-direction: column; line-height: 13px; }
   .stat .v { font: 700 13px var(--mono); color: var(--ink); }
   .stat .l { font-size: 11px; color: var(--muted); }
@@ -131,6 +132,9 @@
   .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
                      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
   @media (max-width: 900px) {
+    .top { grid-template-columns: 32px 1fr auto; grid-template-rows: 18px 14px auto; row-gap: 0; }
+    .top-end { grid-column: 3; }
+    .stats { grid-column: 1 / -1; grid-row: 3; margin-top: 6px; }
     .panels { grid-template-columns: 1fr; height: auto; }
     /* Keep the whole connected office visible, including on narrow screens. */
     .office-stage { display: flex; flex: none; width: 100%; aspect-ratio: 768 / 500; overflow: hidden; background: #081321; }
@@ -144,12 +148,12 @@
     .col.quiet h2 { writing-mode: horizontal-tb; }
     .col.quiet .count { margin-left: auto; }
     .lane { overflow-y: visible; }
-    .top { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; column-gap: 12px; padding: 6px 12px; }
+    .top { display: flex; flex-wrap: wrap; align-items: center; row-gap: 4px; column-gap: 12px; padding: 4px 12px; }
     .brand-sub, .stat .ico { display: none; }
     .brand-icon { width: 20px; height: 20px; }
     .brand-icon svg { width: 18px; height: 18px; }
     .top h1 { line-height: 20px; }
-    .stats { flex-wrap: wrap; overflow: visible; }
+    .stats { flex-wrap: wrap; overflow: visible; margin-top: 0; }
     .stat { height: 24px; padding: 0 10px; gap: 6px; }
     .stat .txt { flex-direction: row; align-items: baseline; gap: 6px; }
     .top-end { flex-wrap: wrap; }

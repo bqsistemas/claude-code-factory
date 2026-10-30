@@ -48,7 +48,9 @@ test('AC-2: stat cards have icons, text order and card styling', () => {
   assert.ok(radius('.stat') >= 8 && radius('.stat') <= 12);
   assert.match(rule('.stat .txt'), /flex-direction:\s*column/);
   const colors = { jobs: '--ink', running: '--pass', agents: '--active', cost: '--changes' };
-  for (const [k, v] of Object.entries(colors)) assert.match(rule(`.ico-${k}`), new RegExp(`color:\\s*var\\(${v}\\)`), k);
+  for (const [k, v] of Object.entries(colors)) assert.match(rule(`.stat .ico-${k}`), new RegExp(`color:\\s*var\\(${v}\\)`), k);
+  // .stat .ico (0,2,0) must not set a color that would beat or mask the accent rules.
+  assert.doesNotMatch(rule('.stat .ico'), /(?:^|[;\s])color:/);
 });
 
 test('AC-3: top-end group order and matching styles', () => {
@@ -110,4 +112,15 @@ test('AC-7: header rules use no literal hex colors', () => {
   let n = 0;
   for (const src of [top, mobile]) for (const m of src.matchAll(sel)) { n++; assert.doesNotMatch(m[2], /#[0-9a-fA-F]{3,8}\b/, m[1]); }
   assert.ok(n > 10);
+});
+
+test('AC-3: hidden badges stay hidden despite their display rules', () => {
+  assert.match(rule('.tag'), /display:\s*inline-flex/);
+  assert.match(rule('.tag[hidden]'), /display:\s*none/);
+  assert.match(rule('.parked[hidden]'), /display:\s*none/);
+});
+
+test('tablet: stats take their own full-width row at 900px and below', () => {
+  const tablet = media.find((m) => /max-width:\s*900px/.test(m.head)).inner;
+  assert.match(decls(tablet, '.stats'), /grid-column:\s*1 \/ -1/);
 });
