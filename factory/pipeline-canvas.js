@@ -86,6 +86,28 @@ export function stageDetails(job, stageKey, now = Date.now()) {
   };
 }
 
+export function bindPipelineControls({ jobSelect, stageSelect, canvas, getSelection, setSelection, render }) {
+  const focusStage = (stage) => canvas.querySelector(`.pipeline-node[data-stage="${stage}"]`)?.focus();
+  jobSelect.addEventListener('change', (event) => {
+    const selection = getSelection();
+    setSelection({ ...selection, jobId: event.target.value || null });
+    render();
+    focusStage(getSelection().stage);
+  });
+  stageSelect.addEventListener('change', (event) => {
+    setSelection({ ...getSelection(), stage: event.target.value });
+    render();
+    focusStage(getSelection().stage);
+  });
+  canvas.addEventListener('click', (event) => {
+    const node = event.target.closest('.pipeline-node');
+    if (!node) return;
+    setSelection({ ...getSelection(), stage: node.dataset.stage });
+    render();
+    focusStage(getSelection().stage);
+  });
+}
+
 export function artifactFiles(job) {
   const files = ['issue.md', 'intake.md', 'spec.md', 'build.md'];
   const rows = roundsOf(isObject(job) ? job : {}).slice(0, 50);

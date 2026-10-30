@@ -608,7 +608,7 @@ import {
 } from './activity.js';
 import { formatCost, headerStats } from './office.js';
 import { createOffice } from './office-renderer.js';
-import { CANVAS_STAGES, artifactFiles, branchLink, derivePipeline, githubLinks, isSafeJobId, stageDetails } from './pipeline-canvas.js';
+import { CANVAS_STAGES, artifactFiles, bindPipelineControls, branchLink, derivePipeline, githubLinks, isSafeJobId, stageDetails } from './pipeline-canvas.js';
 
 const DEMO = new URLSearchParams(location.search).has('demo');
 const BASE = DEMO ? 'demo/' : '';
@@ -799,20 +799,11 @@ async function updatePipelineArtifacts(job, files) {
   });
 }
 
-$('pipeline-job').addEventListener('change', (event) => {
-  selectedJobId = event.target.value || null;
-  renderPipeline();
-});
-$('pipeline-stage').addEventListener('change', (event) => {
-  selectedStage = event.target.value;
-  renderPipeline();
-});
-$('pipeline-canvas').addEventListener('click', (event) => {
-  const node = event.target.closest('.pipeline-node');
-  if (!node) return;
-  selectedStage = node.dataset.stage;
-  renderPipeline();
-  $('pipeline-canvas').querySelector(`.pipeline-node[data-stage="${selectedStage}"]`)?.focus();
+bindPipelineControls({
+  jobSelect: $('pipeline-job'), stageSelect: $('pipeline-stage'), canvas: $('pipeline-canvas'),
+  getSelection: () => ({ jobId: selectedJobId, stage: selectedStage }),
+  setSelection: ({ jobId, stage }) => { selectedJobId = jobId; selectedStage = stage; },
+  render: renderPipeline,
 });
 $('pipeline-inspector').addEventListener('click', (event) => {
   const button = event.target.closest('[data-artifact]');

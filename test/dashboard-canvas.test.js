@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { artifactFiles, branchLink, derivePipeline, githubLinks, isSafeJobId, stageDetails } from '../factory/pipeline-canvas.js';
+import { artifactFiles, bindPipelineControls, branchLink, derivePipeline, githubLinks, isSafeJobId, stageDetails } from '../factory/pipeline-canvas.js';
 
 const html = await readFile(new URL('../factory/dashboard.html', import.meta.url), 'utf8');
 
@@ -31,11 +31,55 @@ test('AC-2: accessible job and stage controls update the pipeline selection', ()
   assert.match(html, /id="pipeline-job"[^>]*aria-label="Select job"/);
   assert.match(html, /id="pipeline-stage"[^>]*aria-label="Select pipeline stage"/);
   assert.match(html, /id="pipeline-canvas"[^>]*aria-label="Pipeline stages"/);
-  assert.match(html, /addEventListener\('change'/);
+  assert.match(html, /bindPipelineControls\(/);
   const selected = stageDetails({ id: 'job-a', stage: 'build' }, 'review');
   assert.equal(selected.key, 'review');
   assert.equal(selected.status, 'Pending');
-  assert.ok(html.includes('querySelector(`.pipeline-node[data-stage="${selectedStage}"]`)?.focus()'));
+});
+
+test('AC-2: keyboard job and stage changes render matching context and focus the selected stage', () => {
+  const listeners = new Map();
+  const jobSelect = { addEventListener: (name, fn) => listeners.set(`job:${name}`, fn) };
+  const stageSelect = { addEventListener: (name, fn) => listeners.set(`stage:${name}`, fn) };
+  const focusByStage = new Map();
+  const canvas = {
+    addEventListener: (name, fn) => listeners.set(`canvas:${name}`, fn),
+    querySelector: (selector) => {
+      const stage = selector.match(/data-stage="([^"]+)"/)?.[1];
+      return stage ? { focus: () => focusByStage.set(stage, true) } : null;
+    },
+  };
+  const jobs = [
+    { id: 'job-a', title: 'Alpha job', issue: 41, stage: 'build' },
+    { id: 'job-b', title: 'Beta job', issue: 42, stage: 'review' },
+  ];
+  let selection = { jobId: 'job-a', stage: 'build' };
+  let rendered;
+  const render = () => {
+    const job = jobs.find(({ id }) => id === selection.jobId);
+    rendered = { title: job.title, ...stageDetails(job, selection.stage), stages: derivePipeline(job) };
+  };
+  bindPipelineControls({
+    jobSelect, stageSelect, canvas,
+    getSelection: () => selection,
+    setSelection: (next) => { selection = next; },
+    render,
+  });
+
+  // Native select controls emit change for both keyboard and pointer selection.
+  listeners.get('job:change')({ target: { value: 'job-b' } });
+  assert.equal(rendered.title, 'Beta job');
+  assert.equal(rendered.issue, '#42');
+  assert.equal(rendered.key, 'build');
+  assert.equal(rendered.status, 'Complete');
+  assert.equal(focusByStage.get('build'), true);
+
+  listeners.get('stage:change')({ target: { value: 'approve' } });
+  assert.equal(rendered.title, 'Beta job');
+  assert.equal(rendered.key, 'approve');
+  assert.equal(rendered.status, 'Pending');
+  assert.equal(rendered.stages.find(({ key }) => key === 'review').state, 'active');
+  assert.equal(focusByStage.get('approve'), true);
 });
 
 test('AC-3: inspector fields expose available context and explicit missing values', () => {
