@@ -144,6 +144,17 @@ export function formatDuration(ms) {
   return h ? `${h}h ${minutes % 60}m` : `${minutes}m`;
 }
 
+/** Legacy numeric costs remain compatible; explicit unknown always wins. */
+export function costAvailable(job) {
+  return job?.cost_status !== 'unavailable' && (job?.provider !== 'codex' || job?.cost_status === 'available')
+    && typeof job?.cost_usd === 'number' && Number.isFinite(job.cost_usd) && job.cost_usd >= 0;
+}
+
+export function costLabel(job) {
+  if (job?.cost_status === 'unavailable' || (job?.provider === 'codex' && !costAvailable(job))) return 'Cost unavailable';
+  return costAvailable(job) ? `$${job.cost_usd.toFixed(2)}` : DASH;
+}
+
 /**
  * Cost and elapsed time for a card: `$1.84` and the time from `started` to
  * `finished` (or `now`). Missing or invalid values render as '—'.
@@ -153,8 +164,7 @@ export function formatDuration(ms) {
  */
 export function costTimeHtml(job, now = Date.now()) {
   const j = isObject(job) ? job : {};
-  const cost = typeof j.cost_usd === 'number' && Number.isFinite(j.cost_usd) && j.cost_usd >= 0
-    ? `$${j.cost_usd.toFixed(2)}` : DASH;
+  const cost = costLabel(j);
   const start = typeof j.started === 'string' ? Date.parse(j.started) : NaN;
   const end = typeof j.finished === 'string' ? Date.parse(j.finished) : Number(now);
   return `<span class="cost" title="cost">${esc(cost)}</span>` +

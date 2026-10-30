@@ -989,7 +989,7 @@ function md(src) {
 function renderStats() {
   const s = headerStats(board.jobs);
   const tiles = { 'stat-jobs': [s.total, T.statJobs], 'stat-running': [s.running, T.statRunning],
-    'stat-agents': [s.agents, T.statAgents], 'stat-cost': [formatCost(s.cost), T.statCost] };
+    'stat-agents': [s.agents, T.statAgents], 'stat-cost': [formatCost(s.cost, s.cost_unavailable), T.statCost] };
   for (const [id, [value, label]] of Object.entries(tiles)) {
     const tile = $(id);
     tile.querySelector('.v').textContent = loaded ? String(value) : '–';

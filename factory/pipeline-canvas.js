@@ -1,4 +1,4 @@
-import { roundsOf } from './activity.js';
+import { roundsOf, costLabel } from './activity.js';
 
 export const CANVAS_STAGES = Object.freeze([
   ['intake', 'Intake'], ['spec', 'Spec'], ['build', 'Build'], ['gate', 'Gate'],
@@ -66,7 +66,8 @@ export function stageDetails(job, stageKey, now = Date.now()) {
   const start = typeof source.started === 'string' ? Date.parse(source.started) : NaN;
   const end = typeof source.finished === 'string' ? Date.parse(source.finished) : Number(now);
   const elapsed = Number.isFinite(start) && Number.isFinite(end) && end >= start ? `${Math.floor((end - start) / 60000)}m` : DASH;
-  const cost = number(source.cost_usd) ? `$${source.cost_usd.toFixed(2)}` : DASH;
+  const label = costLabel(source);
+  const cost = label === '—' ? DASH : label;
   const issue = Number.isInteger(source.issue) && source.issue > 0 ? `#${source.issue}` : DASH;
   const pr = Number.isInteger(source.pr) && source.pr > 0 ? `#${source.pr}` : DASH;
   const agentKey = STAGE_AGENTS[selected.key];
