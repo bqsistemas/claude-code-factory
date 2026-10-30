@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { AGENTS, STAGE_COLUMNS, activeAgents, laneTone } from '../factory/activity.js';
 import { AVATARS } from '../factory/avatars.js';
 import {
-  AREAS, CHARACTER_FOR, FURNITURE, LOUNGE_SPOTS, MAP, MEETING_SEATS, SEATS, SPRITES, WAYPOINTS, WALL_H, PARTITION, DOOR_W, officeBackdrop,
+  AREAS, CHARACTER_FOR, FURNITURE, LOUNGE_SPOTS, MAP, MEETING_SEATS, SEATS, SPRITES, WAYPOINTS, WALL_H, PARTITION, DOOR_W, officeBackdrop, officeLandmarks,
   areaForStage, areaTone, bubbleText, describeOffice, formatCost, headerStats, hitTargets, layoutOffice, officeState, remapWalker, route,
 } from '../factory/office.js';
 
@@ -253,16 +253,16 @@ const within = (o, r) => o.x >= r.x && o.y >= r.y && o.x + o.w <= r.x + r.w && o
 test('AC-1: atlas rects for wall, floor, partition and wall props', () => {
   assert.deepEqual(SPRITES.wall, { x: 84, y: 70, w: 26, h: 20 });
   assert.deepEqual(SPRITES.floor, { x: 3, y: 68, w: 73, h: 24 });
-  assert.deepEqual(SPRITES.partition, { x: 171, y: 44, w: 79, h: 17 });
+  assert.notDeepEqual(SPRITES.partition, SPRITES.wall);
   assert.ok(!Object.hasOwn(SPRITES, 'sign'));
   assert.ok(['window', 'clock', 'calendar'].some((k) => Object.hasOwn(SPRITES, k)));
   for (const { x, y, w, h } of Object.values(SPRITES)) assert.ok(x >= 0 && y >= 0 && x + w <= 256 && y + h <= 160);
   assert.equal(WALL_H, SPRITES.wall.h);
 });
 
-test('AC-2: Escalation prop is a calendar or flag below the wall strip', () => {
+test('AC-2: Escalation calendar sits below the wall strip', () => {
   const esc = AREAS.find((a) => a.id === 'escalation').rect;
-  const f = FURNITURE.find((e) => inside2(esc, e.x + SPRITES[e.sprite].w / 2, e.y + SPRITES[e.sprite].h / 2) && ['calendar', 'flag'].includes(e.sprite));
+  const f = FURNITURE.find((e) => inside2(esc, e.x + SPRITES[e.sprite].w / 2, e.y + SPRITES[e.sprite].h / 2) && e.sprite === 'calendar');
   assert.ok(f && Object.hasOwn(SPRITES, f.sprite));
   assert.ok(f.y >= 68 + WALL_H);
   for (const e of FURNITURE) assert.ok(!['sign', 'wall', 'floor', 'partition'].includes(e.sprite));
@@ -300,10 +300,10 @@ test('AC-4: wall strips cover each area except the bottom-row door, with a wall 
         assert.equal(covered.has(x), a.rect.y === 0 || !inDoor);
       }
       const props = bd.wallProps.filter((p) => p.id === a.id);
-      assert.ok(props.length);
+      assert.equal(props.length > 0, a.id !== 'lounge');
       for (const p of props) {
         const sp = SPRITES[p.sprite];
-        assert.ok(['window', 'clock', 'calendar'].includes(p.sprite));
+        assert.ok(['window', 'clock', 'calendar', 'papers'].includes(p.sprite));
         assert.ok(Number.isInteger(p.x) && Number.isInteger(p.y));
         assert.ok(segs.some((s) => within({ x: p.x, y: p.y, w: sp.w, h: sp.h }, s)));
       }
@@ -336,6 +336,126 @@ test('AC-5: partitions at the shared borders and doors stay reachable', () => {
 });
 
 test('AC-6: officeBackdrop never throws on invalid input', () => {
-  const empty = { corridor: null, doors: [], walls: [], wallProps: [], partitions: [] };
+  const empty = { corridor: null, doors: [], floors: [], walls: [], wallProps: [], partitions: [] };
   for (const v of [null, undefined, {}, 'x', 5, [], { areas: 'x' }, { nodes: {} }]) assert.deepEqual(officeBackdrop(v), empty);
+});
+
+// ---- Outdoor Lounge, doors on the walk graph, per-room furniture (job 028) ----
+const rectDist = (a, b) => Math.hypot(Math.max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0), Math.max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0));
+const sprRect = (f) => ({ x: f.x, y: f.y, w: SPRITES[f.sprite].w, h: SPRITES[f.sprite].h });
+const centerIn = (f) => areaOfBase({ x: f.x + SPRITES[f.sprite].w / 2, y: f.y + SPRITES[f.sprite].h / 2 })?.id;
+const strictlyIn = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+
+test('AC-1: new atlas rects, sky band, partition body and every furniture sprite exist', () => {
+  ['Orange', 'Yellow', 'Green', 'Blue', 'White', 'Grey'].forEach((c, i) => {
+    assert.deepEqual(SPRITES['chair' + c], { x: 6 + 13 * i, y: 41, w: 11, h: 22 });
+  });
+  assert.ok(SPRITES.sky.y + SPRITES.sky.h <= 38);
+  for (const k of ['calendar', 'papers', 'printer', 'pc', 'vending', 'cooler']) assert.ok(Object.hasOwn(SPRITES, k), k);
+  assert.notDeepEqual(SPRITES.partition, SPRITES.wall);
+  for (const { x, y, w, h } of Object.values(SPRITES)) assert.ok([x, y, w, h].every(Number.isInteger) && x + w <= 256 && y + h <= 160);
+  for (const f of FURNITURE) assert.ok(Object.hasOwn(SPRITES, f.sprite), f.sprite);
+});
+
+test('AC-2: officeBackdrop has a floor per area, a sky wall for the lounge and no lounge wall props', () => {
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h), bd = officeBackdrop(l);
+    assert.equal(bd.floors.length, l.areas.length);
+    for (const a of l.areas) {
+      const fl = bd.floors.find((f) => f.id === a.id);
+      assert.deepEqual({ x: fl.x, y: fl.y, w: fl.w, h: fl.h }, a.rect);
+      assert.equal(fl.kind, a.id === 'lounge' ? 'grass' : 'planks');
+    }
+    assert.ok(bd.walls.length);
+    for (const wl of bd.walls) assert.equal(wl.sprite, wl.id === 'lounge' ? 'sky' : 'wall');
+    assert.ok(!bd.wallProps.some((p) => p.id === 'lounge'));
+  }
+  assert.deepEqual(officeBackdrop(null).floors, []);
+});
+
+test('AC-3: every room has its own furniture set and every desk has a chair', () => {
+  const byArea = new Map(AREAS.map((a) => [a.id, []]));
+  for (const f of FURNITURE) byArea.get(centerIn(f)).push(f.sprite);
+  const has = (id, ...names) => names.forEach((n) => assert.ok(byArea.get(id).includes(n), `${id} needs ${n}`));
+  const anyChair = (id) => assert.ok(byArea.get(id).some((n) => n.startsWith('chair')), `${id} needs a chair`);
+  has('research', 'desk', 'papers', 'calendar'); anyChair('research');
+  has('engineering', 'terminal', 'pc', 'desk'); anyChair('engineering');
+  has('review', 'shelf', 'deskLong'); anyChair('review');
+  has('release', 'printer', 'flag'); assert.ok(byArea.get('release').some((n) => n.startsWith('sofa')));
+  has('escalation', 'calendar');
+  has('archive', 'shelf', 'bin'); assert.ok(byArea.get('archive').some((n) => ['cooler', 'binRed', 'binBlue'].includes(n)));
+  has('lounge', 'deskLong', 'vending');
+  assert.ok(byArea.get('lounge').filter((n) => n.startsWith('chair')).length >= 4);
+  const bd = officeBackdrop(layoutOffice(256, 160));
+  assert.ok(bd.wallProps.some((p) => p.id === 'escalation' && p.sprite === 'clock'));
+  const sets = [...byArea.values()].map((n) => [...new Set(n)].sort().join());
+  assert.equal(new Set(sets).size, sets.length);
+  const chairs = FURNITURE.filter((f) => f.sprite.startsWith('chair')).map(sprRect);
+  for (const f of FURNITURE.filter((e) => e.sprite === 'desk' || e.sprite === 'deskLong')) {
+    assert.ok(chairs.some((c) => rectDist(c, sprRect(f)) <= 4), `${f.sprite} at ${f.x},${f.y} needs a chair`);
+  }
+});
+
+test('AC-4: no walk edge crosses a wall or partition, and the door nodes line up', () => {
+  const crosses = (a, b, o) => {
+    for (let t = 0; t <= 1; t += 0.002) {
+      const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+      if (x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h) return true;
+    }
+    return false;
+  };
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h), bd = officeBackdrop(l);
+    for (const [a, b] of WAYPOINTS.edges) {
+      for (const o of [...bd.walls, ...bd.partitions]) assert.ok(!crosses(l.nodes[a], l.nodes[b], o), `${a}-${b} at ${w}x${h}`);
+    }
+    for (const d of bd.doors) {
+      const n = l.nodes['door_' + d.id];
+      assert.ok(n.x >= d.x && n.x < d.x + d.w);
+    }
+    for (const id of ['release', 'lounge']) {
+      const inn = l.nodes['in_' + id], door = l.nodes['door_' + id], area = l.areas.find((a) => a.id === id).rect;
+      assert.equal(inn.x, door.x);
+      assert.ok(inn.y > area.y + WALL_H);
+      assert.ok(WAYPOINTS.edges.some(([a, b]) => [a, b].sort().join() === [`door_${id}`, `in_${id}`].sort().join()));
+    }
+  }
+});
+
+test('AC-5: no node sits strictly inside a piece of furniture', () => {
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h);
+    for (const [name, p] of Object.entries(l.nodes)) {
+      for (const f of l.furniture) assert.ok(!strictlyIn(sprRect(f), p), `${name} inside ${f.sprite} at ${w}x${h}`);
+    }
+  }
+});
+
+test('AC-6: lounge spots are on the terrace, next to a chair and 16px apart', () => {
+  const lounge = AREAS.find((a) => a.id === 'lounge').rect;
+  const chairs = FURNITURE.filter((f) => f.sprite.startsWith('chair') && centerIn(f) === 'lounge').map(sprRect);
+  const spots = Object.values(LOUNGE_SPOTS).map((n) => WAYPOINTS.nodes[n]);
+  assert.equal(new Set(Object.values(LOUNGE_SPOTS)).size, 8);
+  for (const p of spots) {
+    assert.ok(inRect(lounge, p) && p.y >= lounge.y + WALL_H);
+    assert.ok(chairs.some((c) => rectDist(c, { x: p.x, y: p.y, w: 0, h: 0 }) <= 6));
+  }
+  for (const a of spots) for (const b of spots) if (a !== b) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 16);
+});
+
+test('AC-7: officeLandmarks finds the special furniture in its room', () => {
+  const want = { gate: ['terminal', 'engineering'], meeting: ['deskLong', 'review'], escalation: ['calendar', 'escalation'],
+    shelf: ['shelf', 'archive'], bin: ['bin', 'archive'] };
+  for (const [w, h] of SIZES) {
+    const l = layoutOffice(w, h), marks = officeLandmarks(l);
+    for (const [key, [sprite, area]] of Object.entries(want)) {
+      assert.ok(l.furniture.includes(marks[key]), key);
+      assert.equal(marks[key].sprite, sprite);
+      const r = l.areas.find((a) => a.id === area).rect, s = SPRITES[sprite];
+      assert.ok(inRect(r, { x: marks[key].x + s.w / 2, y: marks[key].y + s.h / 2 }), `${key} in ${area}`);
+    }
+  }
+  for (const bad of [null, {}, 'x']) {
+    assert.deepEqual(officeLandmarks(bad), { gate: null, meeting: null, escalation: null, shelf: null, bin: null });
+  }
 });

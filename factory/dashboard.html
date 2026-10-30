@@ -381,7 +381,7 @@ import {
 } from './activity.js';
 import {
   CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats, officeBackdrop,
-  hitTargets, layoutOffice, officeState, remapWalker, route,
+  hitTargets, layoutOffice, officeLandmarks, officeState, remapWalker, route,
 } from './office.js';
 import { AVATARS } from './avatars.js';
 
@@ -801,16 +801,33 @@ function paintBackdrop() {
     const c = bd.corridor;
     ctx.fillStyle = line; ctx.fillRect(c.x * S, c.y * S, c.w * S, c.h * S);
   }
-  for (const area of layout.areas) {
-    tile('floor', area.rect);
+  // Outdoor floor of the Lounge: fixed colors and a fixed pattern (no randomness), so the cached backdrop is stable.
+  const grass = (rc) => {
+    ctx.fillStyle = '#5aa84a'; ctx.fillRect(rc.x * S, rc.y * S, rc.w * S, rc.h * S);
+    for (let gy = 0; gy < rc.h; gy += 6) {
+      for (let gx = 0; gx < rc.w; gx += 8) {
+        const px = rc.x + gx + ((gy / 6) % 2 ? 4 : 0), py = rc.y + gy;
+        ctx.fillStyle = ((gx / 8 + gy / 6) % 3 === 0) ? '#4a9440' : '#6dbb59';
+        ctx.fillRect(px * S, py * S, 2 * S, S);
+        ctx.fillRect((px + 1) * S, (py - 1) * S, S, S);
+      }
+    }
+  };
+  for (const fl of bd.floors) {
+    if (fl.kind === 'grass') grass(fl); else tile('floor', fl);
+    const area = layout.areas.find((a) => a.id === fl.id);
+    if (!area) continue;
     ctx.globalAlpha = 0.25; ctx.fillStyle = toneColor(areaTone(area.id));
     ctx.fillRect(area.rect.x * S, area.rect.y * S, area.rect.w * S, area.rect.h * S);
     ctx.globalAlpha = 1;
   }
-  for (const wl of bd.walls) tile('wall', wl);
+  for (const wl of bd.walls) tile(wl.sprite, wl);
   for (const p of bd.wallProps) sprite(p.sprite, p.x, p.y);
   for (const p of bd.partitions) tile('partition', p);
-  const furn = layout.furniture.map((f) => ({ ...f, r: SPRITES[f.sprite] })).sort((a, b) => a.y + a.r.h - (b.y + b.r.h));
+  // Back to front; small things that sit on a desk are drawn after everything else so the desk does not hide them.
+  const ON_DESK = new Set(['papers', 'calendar', 'pc', 'printer']);
+  const furn = layout.furniture.map((f) => ({ ...f, r: SPRITES[f.sprite] }))
+    .sort((a, b) => (a.y + a.r.h + (ON_DESK.has(a.sprite) ? 1000 : 0)) - (b.y + b.r.h + (ON_DESK.has(b.sprite) ? 1000 : 0)));
   for (const f of furn) sprite(f.sprite, f.x, f.y);
   for (const area of layout.areas) outline(area.rect);
 }
@@ -819,7 +836,7 @@ function drawOffice(now = 0, moving = false) {
   const canvas = $('office-canvas');
   if (!office) return;
   fitCanvas();
-  const { areas: AREAS, furniture: FURNITURE } = layout;
+  const { areas: AREAS } = layout;
   const ctx = canvas.getContext('2d');
   const S = layout.scale, ink = cssVar('--ink');
   ctx.imageSmoothingEnabled = false;
@@ -836,14 +853,16 @@ function drawOffice(now = 0, moving = false) {
     drawText(ctx, area.label, x * S + 4, y * S + 12, ink);
     nextBoxes.set(`area:${area.id}`, { x: x * S, y: y * S, w: w * S, h: h * S });
   }
-  const at = (name) => FURNITURE.find((f) => f.sprite === name);
+  const marks = officeLandmarks(layout);
   // Gate terminal: lit while a job is in gate, with the latest verdict.
-  const gate = at('terminal'), gr = SPRITES.terminal;
-  ctx.globalAlpha = office.gate.lit ? 0.55 : 0.25;
-  ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
-  ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
-  ctx.globalAlpha = 1;
-  // Meeting table and Escalation flag text sit on `--panel` chips, so they read with or without the atlas.
+  const gate = marks.gate, gr = SPRITES.terminal;
+  if (gate) {
+    ctx.globalAlpha = office.gate.lit ? 0.55 : 0.25;
+    ctx.fillStyle = office.gate.lit ? '#22c55e' : '#64748b';
+    ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
+    ctx.globalAlpha = 1;
+  }
+  // Meeting table and Escalation calendar text sit on `--panel` chips, so they read with or without the atlas.
   const labelChip = (text, cx, cy, tone) => {
     const tw = ctx.measureText(text).width + 10;
     ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, cy - 7, tw, 15);
@@ -858,25 +877,25 @@ function drawOffice(now = 0, moving = false) {
   const gateLines = [['GATE', 'muted'], ...(gateJob ? [[`#${gateJob.issue}`, 'active']] : []),
     [verdict, verdict === 'PASS' ? 'done' : verdict === 'FAIL' ? 'parked' : verdict === 'running' ? 'active' : 'muted']];
   const gateChips = [];
-  const gcx = (gate.x + gr.w / 2) * S, gtop = (gate.y + gr.h / 2) * S - (gateLines.length * 16 - 1) / 2;
-  gateLines.forEach(([text, tone], n) => {
+  const gcx = gate ? (gate.x + gr.w / 2) * S : 0, gtop = gate ? (gate.y + gr.h / 2) * S - (gateLines.length * 16 - 1) / 2 : 0;
+  if (gate) gateLines.forEach(([text, tone], n) => {
     const cy = Math.round(gtop + n * 16 + 7);
     labelChip(text, gcx, cy, tone);
     const tw = ctx.measureText(text).width + 10;
     gateChips.push({ x: gcx - tw / 2, y: cy - 7, w: tw, h: 15 });
   });
-  if (office.meeting) {
-    const t = at('deskLong'), tr = SPRITES.deskLong;
+  if (office.meeting && marks.meeting) {
+    const t = marks.meeting, tr = SPRITES.deskLong;
     labelChip(office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S, 'review');
   }
-  const flag = at('flag'), fr = SPRITES.flag;
+  const esc = marks.escalation, er = SPRITES.calendar;
   const labels = office.escalation.map((t) => t.label);
-  if (labels.length) {
+  if (labels.length && esc) {
     const shown = labels.length > 2 ? [...labels.slice(0, 2), `+${labels.length - 2}`] : labels;
-    labelChip(shown.join(' '), (flag.x + fr.w / 2) * S, (flag.y + fr.h / 2) * S, 'parked');
+    labelChip(shown.join(' '), (esc.x + er.w / 2) * S, (esc.y + er.h / 2) * S, 'parked');
   }
   // Archive shelf and bin: merged and rejected counts.
-  const shelf = at('shelf'), shr = SPRITES.shelf, bin = at('bin'), br = SPRITES.bin;
+  const shelf = marks.shelf, shr = SPRITES.shelf, bin = marks.bin, br = SPRITES.bin;
   const chip = (text, cx, y, tone) => {
     const tw = ctx.measureText(text).width + 10;
     ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, y, tw, 15);
@@ -886,6 +905,7 @@ function drawOffice(now = 0, moving = false) {
   };
   const archiveChips = [];
   for (const [text, f, r, tone] of [[`✓${office.archive.merged}`, shelf, shr, 'done'], [`✗${office.archive.rejected}`, bin, br, 'muted']]) {
+    if (!f) continue;
     const cx = (f.x + r.w / 2) * S, y = (f.y + r.h) * S + 2, tw = ctx.measureText(text).width + 10;
     chip(text, cx, y, tone);
     archiveChips.push({ x: cx - tw / 2, y, w: tw, h: 15 });
@@ -934,11 +954,12 @@ function drawOffice(now = 0, moving = false) {
     bubbles.push({ agent, text: st.bubble, color, place: st.place, cx: left + (r.w * S) / 2, y: top });
   }
   // Panel-colored tags with ink text (readable in both themes); the role color is the border.
-  // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation flag or the
+  // A tag may not cover another tag, an area label, a job folder, the Gate terminal, the Escalation calendar or the
   // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
   // character; with no free slot the tag is omitted (the accessible list still names every agent).
-  const spr = (name) => { const f = at(name), r = SPRITES[name]; return { x: f.x * S, y: f.y * S, w: r.w * S, h: r.h * S }; };
-  const obstacles = [spr('terminal'), spr('flag'), spr('deskLong'), spr('shelf'), spr('bin'), ...archiveChips, ...gateChips,
+  const spr = (f, name) => (f ? [{ x: f.x * S, y: f.y * S, w: SPRITES[name].w * S, h: SPRITES[name].h * S }] : []);
+  const obstacles = [...spr(marks.gate, 'terminal'), ...spr(marks.escalation, 'calendar'), ...spr(marks.meeting, 'deskLong'),
+    ...spr(marks.shelf, 'shelf'), ...spr(marks.bin, 'bin'), ...archiveChips, ...gateChips,
     ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
     // Faces only: a tag may cover someone's body but never their head.
     ...[...nextBoxes].filter(([k]) => k.startsWith('agent:')).map(([, box]) => ({ x: box.x, y: box.y, w: box.w, h: Math.round(box.h * 0.4) })),
