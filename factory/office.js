@@ -100,8 +100,21 @@ export const SPRITES = deepFreeze({
   terminal: rect(59, 96, 28, 28), // dark glass panel, the Gate terminal
   shelf: rect(184, 126, 24, 31),  // red shelf with bottles, the Archive shelf
   bin: rect(116, 143, 10, 15),    // green waste bin, the Archive bin
-  sign: rect(84, 70, 26, 20),     // white board, the Escalation sign
+  wall: rect(84, 70, 26, 20),     // white wall strip, tiled along the top of each area
+  floor: rect(3, 68, 73, 24),     // blue plank floor, tiled under each area
+  partition: rect(171, 44, 79, 17), // grey partition panel, tiled for dividers between areas
+  window: rect(59, 96, 26, 20),   // blue double-pane window (top 20 rows), a wall prop
+  clock: rect(159, 108, 19, 6),   // red digital clock "12:00", a wall prop
+  calendar: rect(183, 107, 6, 8), // paper sheet, a wall prop that fits narrow wall segments
+  flag: rect(207, 94, 12, 9),     // framed striped flag, the Escalation prop
 });
+
+/** Height of the wall strip at the top of each area, in map pixels. */
+export const WALL_H = SPRITES.wall.h;
+/** Thickness of a partition, in map pixels. */
+export const PARTITION = 4;
+/** Width of a door gap, in map pixels. */
+export const DOOR_W = 16;
 
 /** Which of the five characters plays each role. The role color comes from AVATARS. */
 export const CHARACTER_FOR = deepFreeze({
@@ -125,7 +138,7 @@ export const FURNITURE = deepFreeze([
   { sprite: 'desk', x: 175, y: 46 }, { sprite: 'desk', x: 207, y: 46 },
   { sprite: 'plant', x: 240, y: 36 },
   { sprite: 'desk', x: 17, y: 112 }, { sprite: 'plant', x: 66, y: 90 },
-  { sprite: 'sign', x: 100, y: 84 },
+  { sprite: 'flag', x: 108, y: 92 },
   { sprite: 'plant', x: 186, y: 138 },
   { sprite: 'shelf', x: 212, y: 82 }, { sprite: 'bin', x: 238, y: 108 },
 ]);
@@ -183,6 +196,65 @@ export function layoutOffice(width, height, opts) {
     return { sprite: f.sprite, x: Math.min(Math.max(0, x), mw - sp.w), y: Math.min(Math.max(0, y), mh - sp.h) };
   });
   return { scale, map: { width: mw, height: mh }, areas, nodes, furniture };
+}
+
+const EMPTY_BACKDROP = { corridor: null, doors: [], walls: [], wallProps: [], partitions: [] };
+
+/**
+ * Static scenery geometry for a `layoutOffice` result: corridor, door gaps, wall strips, wall props and partitions,
+ * all integers in map pixels. Pure; never throws; invalid input gives an empty backdrop.
+ */
+export function officeBackdrop(layout) {
+  try {
+    const out = () => ({ corridor: null, doors: [], walls: [], wallProps: [], partitions: [] });
+    if (!isObject(layout) || !Array.isArray(layout.areas) || !layout.areas.length || !isObject(layout.nodes) || !isObject(layout.map)) return out();
+    const areas = layout.areas;
+    const ok = areas.every((a) => isObject(a) && typeof a.id === 'string' && isObject(a.rect) &&
+      [a.rect.x, a.rect.y, a.rect.w, a.rect.h].every(Number.isInteger) && a.rect.w > 0 && a.rect.h > 0);
+    if (!ok || !Number.isInteger(layout.map.width)) return out();
+    const topY = Math.min(...areas.map((a) => a.rect.y));
+    const top = areas.filter((a) => a.rect.y === topY), bottom = areas.filter((a) => a.rect.y !== topY);
+    const res = out();
+    const topEnd = Math.max(...top.map((a) => a.rect.y + a.rect.h));
+    const bottomStart = bottom.length ? Math.min(...bottom.map((a) => a.rect.y)) : topEnd;
+    res.corridor = { x: 0, y: topEnd, w: layout.map.width, h: bottomStart - topEnd };
+    const isTop = new Set(top.map((a) => a.id));
+    for (const a of areas) {
+      const { x, y, w, h } = a.rect;
+      const node = layout.nodes['door_' + a.id];
+      const dx = isObject(node) && Number.isFinite(node.x) ? Math.floor(node.x) : x + Math.floor(w / 2);
+      const dw = Math.min(DOOR_W, w);
+      const gx = Math.min(Math.max(x, dx - Math.floor(dw / 2)), x + w - dw);
+      res.doors.push({ id: a.id, x: gx, w: dw });
+      const segs = isTop.has(a.id)
+        ? [{ x, w }]
+        : [{ x, w: gx - x }, { x: gx + dw, w: x + w - gx - dw }].filter((s) => s.w > 0);
+      for (const s of segs) res.walls.push({ id: a.id, x: s.x, y, w: s.w, h: WALL_H });
+      const best = segs.reduce((m, s) => (s.w > m.w ? s : m), segs[0] ?? { x, w: 0 });
+      for (const name of ['window', 'clock', 'calendar']) {
+        const sp = SPRITES[name];
+        if (best.w < sp.w + (name === 'calendar' ? 0 : 2)) continue;
+        res.wallProps.push({ id: a.id, sprite: name, x: best.x + Math.floor((best.w - sp.w) / 2), y: y + Math.floor((WALL_H - sp.h) / 2) });
+        break;
+      }
+      if (isTop.has(a.id)) {
+        const py = y + h - PARTITION;
+        for (const s of [{ x, w: gx - x }, { x: gx + dw, w: x + w - gx - dw }]) {
+          if (s.w > 0) res.partitions.push({ x: s.x, y: py, w: s.w, h: PARTITION });
+        }
+      }
+    }
+    for (const row of [top, bottom]) {
+      const sorted = [...row].sort((p, q) => p.rect.x - q.rect.x);
+      for (let i = 1; i < sorted.length; i++) {
+        const a = sorted[i - 1].rect, b = sorted[i].rect;
+        res.partitions.push({ x: b.x - PARTITION, y: a.y + WALL_H, w: PARTITION, h: a.h - WALL_H });
+      }
+    }
+    return res;
+  } catch {
+    return { ...EMPTY_BACKDROP, doors: [], walls: [], wallProps: [], partitions: [] };
+  }
 }
 
 /** Position a walker should have after a re-layout: its node when still, a proportional point when walking. */
