@@ -20,7 +20,8 @@ function mappedStage(job) {
   const stage = typeof job?.stage === 'string' ? job.stage : '';
   if (stage === 'needs-human') {
     const from = typeof job.parked_from === 'string' ? job.parked_from : '';
-    return CANVAS_STAGES.some((item) => item.key === from) ? from : 'needs-human';
+    const parkedStage = SOURCE_STAGE[from] || from;
+    return CANVAS_STAGES.some((item) => item.key === parkedStage) ? parkedStage : 'needs-human';
   }
   const candidate = SOURCE_STAGE[stage] || stage;
   return CANVAS_STAGES.some((item) => item.key === candidate) ? candidate : 'intake';

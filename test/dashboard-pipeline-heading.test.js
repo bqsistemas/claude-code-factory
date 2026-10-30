@@ -20,11 +20,13 @@ test('AC-3: the #pipeline section keeps its id and class', () => {
   assert.match(tag, /id="pipeline"/);
 });
 
-test('AC-4: i18n gets no pipeline keys and en/es/pt stay aligned', () => {
+test('AC-4: pipeline labels are localized and en/es/pt dictionaries stay aligned', () => {
   const json = JSON.parse(html.match(/<script type="application\/json" id="i18n">([\s\S]*?)<\/script>/)[1]);
   const en = Object.keys(json.en).sort();
   for (const lang of ['en', 'es', 'pt']) {
     assert.deepEqual(Object.keys(json[lang]).sort(), en);
-    assert.ok(!Object.keys(json[lang]).some((k) => /pipeline/i.test(k)));
+    for (const key of ['pipelineJob', 'pipelineStage', 'pipelineActive', 'pipelinePending', 'pipelineComplete', 'pipelineBlocked', 'pipelineArtifacts', 'pipelineNotWritten']) {
+      assert.ok(json[lang][key], `${lang}.${key}`);
+    }
   }
 });

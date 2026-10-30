@@ -11,6 +11,10 @@ test('AC-1: pipeline stages stay ordered and derive progress from the selected j
   assert.deepEqual(stages.map(({ state }) => state), ['complete', 'complete', 'complete', 'complete', 'active', 'pending', 'pending']);
   assert.deepEqual(derivePipeline({ stage: 'merged' }).map(({ state }) => state), Array(7).fill('complete'));
   assert.equal(derivePipeline({ stage: 'needs-human', parked_from: 'build' })[2].state, 'blocked');
+  for (const parked_from of ['merging', 'awaiting-merge']) {
+    const stages = derivePipeline({ stage: 'needs-human', parked_from });
+    assert.deepEqual(stages.map(({ state }) => state), ['complete', 'complete', 'complete', 'complete', 'complete', 'complete', 'blocked']);
+  }
 });
 
 test('AC-2: accessible job and stage controls update the pipeline selection', () => {
@@ -21,6 +25,7 @@ test('AC-2: accessible job and stage controls update the pipeline selection', ()
   const selected = stageDetails({ id: 'job-a', stage: 'build' }, 'review');
   assert.equal(selected.key, 'review');
   assert.equal(selected.status, 'Pending');
+  assert.ok(html.includes('querySelector(`.pipeline-node[data-stage="${selectedStage}"]`)?.focus()'));
 });
 
 test('AC-3: inspector fields expose available context and explicit missing values', () => {
@@ -50,6 +55,15 @@ test('AC-4: artifact allowlist and GitHub links reject arbitrary paths and URLs'
   assert.equal(isSafeJobId('032-gamify-pipeline-canvas-with'), true);
   assert.equal(isSafeJobId('../issue'), false);
   assert.match(html, /data-artifact/);
+  assert.match(html, /artifact-status/);
+  assert.match(html, /disabled/);
+});
+
+test('AC-2: pipeline UI labels and statuses use the dashboard language dictionaries', () => {
+  for (const key of ['pipelineJob', 'pipelineStage', 'pipelineStages', 'pipelineNoJobs', 'pipelineAvailable', 'pipelinePending', 'pipelineActive', 'pipelineComplete', 'pipelineBlocked', 'pipelineIssue', 'pipelineStatus', 'pipelineProgress', 'pipelineDuration', 'pipelineCost', 'pipelineAgent', 'pipelineRound', 'pipelineReviewers', 'pipelineBranch', 'pipelinePr', 'pipelineNote', 'pipelineArtifacts']) {
+    assert.match(html, new RegExp(`"${key}"\\s*:`), `missing localized string: ${key}`);
+  }
+  assert.match(html, /T\.pipelineAvailable/);
 });
 
 test('AC-5: canvas fits dashboard breakpoints and reduced motion without color-only state', () => {
