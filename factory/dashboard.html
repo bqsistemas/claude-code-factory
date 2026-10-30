@@ -381,7 +381,7 @@ import {
 } from './activity.js';
 import {
   CHARACTER_FOR, SPRITES, areaTone, describeOffice, formatCost, headerStats, officeBackdrop,
-  hitTargets, layoutOffice, officeLandmarks, officeState, remapWalker, route,
+  hitTargets, idleTagBox, layoutOffice, officeLandmarks, officeState, remapWalker, route,
 } from './office.js';
 import { AVATARS } from './avatars.js';
 
@@ -825,7 +825,7 @@ function paintBackdrop() {
   for (const p of bd.wallProps) sprite(p.sprite, p.x, p.y);
   for (const p of bd.partitions) tile('partition', p);
   // Back to front; small things that sit on a desk are drawn after everything else so the desk does not hide them.
-  const ON_DESK = new Set(['papers', 'calendar', 'pc', 'printer']);
+  const ON_DESK = new Set(['papers', 'calendar', 'pc', 'printer', 'mug', 'coffee', 'trinket', 'flag', 'flagB', 'flagC', 'papersB']);
   const furn = layout.furniture.map((f) => ({ ...f, r: SPRITES[f.sprite] }))
     .sort((a, b) => (a.y + a.r.h + (ON_DESK.has(a.sprite) ? 1000 : 0)) - (b.y + b.r.h + (ON_DESK.has(b.sprite) ? 1000 : 0)));
   for (const f of furn) sprite(f.sprite, f.x, f.y);
@@ -862,7 +862,7 @@ function drawOffice(now = 0, moving = false) {
     ctx.fillRect((gate.x + 2) * S, (gate.y + 2) * S, (gr.w - 4) * S, (gr.h - 4) * S);
     ctx.globalAlpha = 1;
   }
-  // Meeting table and Escalation calendar text sit on `--panel` chips, so they read with or without the atlas.
+  // Meeting pod and Escalation calendar text sit on `--panel` chips, so they read with or without the atlas.
   const labelChip = (text, cx, cy, tone) => {
     const tw = ctx.measureText(text).width + 10;
     ctx.fillStyle = cssVar('--panel'); ctx.fillRect(cx - tw / 2, cy - 7, tw, 15);
@@ -885,7 +885,7 @@ function drawOffice(now = 0, moving = false) {
     gateChips.push({ x: gcx - tw / 2, y: cy - 7, w: tw, h: 15 });
   });
   if (office.meeting && marks.meeting) {
-    const t = marks.meeting, tr = SPRITES.deskLong;
+    const t = marks.meeting, tr = SPRITES[marks.meeting.sprite];
     labelChip(office.meeting.issue ? `#${office.meeting.issue}` : 'review', (t.x + tr.w / 2) * S, (t.y + tr.h / 2) * S, 'review');
   }
   const esc = marks.escalation, er = SPRITES.calendar;
@@ -958,7 +958,7 @@ function drawOffice(now = 0, moving = false) {
   // meeting table. It looks for the nearest free slot (above/below, then shifted sideways) within a few rows of its
   // character; with no free slot the tag is omitted (the accessible list still names every agent).
   const spr = (f, name) => (f ? [{ x: f.x * S, y: f.y * S, w: SPRITES[name].w * S, h: SPRITES[name].h * S }] : []);
-  const obstacles = [...spr(marks.gate, 'terminal'), ...spr(marks.escalation, 'calendar'), ...spr(marks.meeting, 'deskLong'),
+  const obstacles = [...spr(marks.gate, 'terminal'), ...spr(marks.escalation, 'calendar'), ...spr(marks.meeting, marks.meeting?.sprite),
     ...spr(marks.shelf, 'shelf'), ...spr(marks.bin, 'bin'), ...archiveChips, ...gateChips,
     ...[...nextBoxes].filter(([k]) => k.startsWith('token:')).map(([, box]) => box),
     // Faces only: a tag may cover someone's body but never their head.
@@ -971,8 +971,11 @@ function drawOffice(now = 0, moving = false) {
     if (b.place === 'lounge') {
       // Idle: a short tag over the torso, so the face stays visible and each tag stays in its own cell.
       b.text = SHORT[b.agent];
-      b.w = ctx.measureText(b.text).width + 8;
-      b.x = Math.min(Math.max(0, b.cx - b.w / 2), canvas.width - b.w); b.by = b.y + 24;
+      const w = walkers.get(b.agent);
+      const box = idleTagBox({ x: w.x, y: w.y }, b.agent, S, ctx.measureText(b.text).width);
+      if (!box) continue;
+      b.w = box.w;
+      b.x = Math.min(Math.max(0, box.x), canvas.width - b.w); b.by = box.y;
       placed.push(b);
       ctx.fillStyle = cssVar('--panel'); ctx.fillRect(b.x, b.by, b.w, 15);
       ctx.strokeStyle = b.color; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.by + 1, b.w - 2, 13);

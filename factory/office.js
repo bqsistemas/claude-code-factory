@@ -27,40 +27,40 @@ export const AREAS = deepFreeze([
   { id: 'research', label: 'Research', stages: ['intake', 'needs-info'], rect: rect(0, 0, 84, 64) },
   { id: 'engineering', label: 'Engineering', stages: ['spec', 'build', 'gate'], rect: rect(84, 0, 88, 64) },
   { id: 'review', label: 'Review', stages: ['review'], rect: rect(172, 0, 84, 64) },
-  { id: 'release', label: 'Release', stages: ['approve', 'merging', 'awaiting-merge'], rect: rect(0, 68, 84, 92) },
-  { id: 'escalation', label: 'Escalation', stages: ['needs-human'], rect: rect(84, 68, 60, 92) },
+  { id: 'release', label: 'Release', stages: ['approve', 'merging', 'awaiting-merge'], rect: rect(0, 68, 48, 92) },
+  { id: 'escalation', label: 'Escalation', stages: ['needs-human'], rect: rect(48, 68, 60, 92) },
   { id: 'archive', label: 'Archive', stages: ['merged', 'rejected'], rect: rect(208, 68, 48, 92) },
-  { id: 'lounge', label: 'Lounge', stages: [], rect: rect(144, 68, 64, 92) },
+  { id: 'lounge', label: 'Lounge', stages: [], rect: rect(108, 68, 100, 92) },
 ]);
 
 const REVIEWERS = ['review-security', 'review-ux', 'review-ui', 'review-code'];
 
 /**
- * Walkable graph. Corridor runs along y=66; each area has a door node next to it. Bottom-row rooms with inner nodes
- * (release, lounge) cross their wall strip through the door gap via `in_<id>`, right under the strip and on the door's x.
+ * Walkable graph. Corridor runs along y=66; each area has a door node next to it. Rooms with inner nodes (research,
+ * engineering, release, lounge) cross their wall or partition through the door gap via `in_<id>`, on the door's x.
  */
 export const WAYPOINTS = deepFreeze({
   nodes: {
-    cor_a: { x: 42, y: 66 }, cor_b: { x: 114, y: 66 }, cor_c: { x: 128, y: 66 },
-    cor_d: { x: 176, y: 66 }, cor_e: { x: 214, y: 66 }, cor_f: { x: 232, y: 66 },
+    cor_a: { x: 42, y: 66 }, cor_b: { x: 78, y: 66 }, cor_c: { x: 128, y: 66 },
+    cor_d: { x: 158, y: 66 }, cor_e: { x: 214, y: 66 }, cor_f: { x: 232, y: 66 },
     door_research: { x: 42, y: 60 }, door_engineering: { x: 128, y: 60 }, door_review: { x: 214, y: 60 },
-    door_release: { x: 42, y: 72 }, door_escalation: { x: 114, y: 72 }, door_lounge: { x: 176, y: 72 },
+    door_release: { x: 42, y: 72 }, door_escalation: { x: 78, y: 72 }, door_lounge: { x: 158, y: 72 },
     door_archive: { x: 232, y: 72 },
-    seat_intake: { x: 24, y: 38 }, seat_spec: { x: 94, y: 36 }, seat_builder: { x: 141, y: 36 },
-    seat_sec: { x: 185, y: 60 }, seat_ux: { x: 199, y: 60 }, seat_ui: { x: 213, y: 60 }, seat_code: { x: 227, y: 60 },
-    seat_approver: { x: 22, y: 112 },
-    meet_sec: { x: 183, y: 21 }, meet_ux: { x: 197, y: 21 }, meet_ui: { x: 211, y: 21 }, meet_code: { x: 225, y: 21 },
-    in_release: { x: 42, y: 90 }, in_lounge: { x: 176, y: 90 },
-    lounge_1: { x: 154, y: 100 }, lounge_2: { x: 177, y: 100 }, lounge_3: { x: 166, y: 113 }, lounge_4: { x: 145, y: 116 },
-    lounge_5: { x: 145, y: 136 }, lounge_6: { x: 164, y: 142 }, lounge_7: { x: 185, y: 150 }, lounge_8: { x: 147, y: 155 },
+    in_research: { x: 42, y: 56 }, in_engineering: { x: 128, y: 57 },
+    seat_intake: { x: 24, y: 38 }, seat_spec: { x: 106, y: 25 }, seat_builder: { x: 132, y: 25 },
+    seat_sec: { x: 181, y: 60 }, seat_ux: { x: 205, y: 60 }, seat_ui: { x: 222, y: 60 }, seat_code: { x: 245, y: 60 },
+    seat_approver: { x: 14, y: 111 },
+    in_release: { x: 42, y: 90 }, in_lounge: { x: 158, y: 90 },
+    lounge_1: { x: 142, y: 98 }, lounge_2: { x: 120, y: 108 }, lounge_3: { x: 164, y: 99 }, lounge_4: { x: 159, y: 147 },
+    lounge_5: { x: 137, y: 148 }, lounge_6: { x: 187, y: 125 }, lounge_7: { x: 117, y: 135 }, lounge_8: { x: 182, y: 146 },
   },
   edges: [
     ['cor_a', 'cor_b'], ['cor_b', 'cor_c'], ['cor_c', 'cor_d'], ['cor_d', 'cor_e'], ['cor_e', 'cor_f'],
     ['door_research', 'cor_a'], ['door_release', 'cor_a'], ['door_engineering', 'cor_c'],
     ['door_escalation', 'cor_b'], ['door_lounge', 'cor_d'], ['door_review', 'cor_e'], ['door_archive', 'cor_f'],
-    ['seat_intake', 'door_research'], ['seat_spec', 'door_engineering'], ['seat_builder', 'door_engineering'],
+    ['door_research', 'in_research'], ['door_engineering', 'in_engineering'],
+    ['seat_intake', 'in_research'], ['seat_spec', 'in_engineering'], ['seat_builder', 'in_engineering'],
     ['seat_sec', 'door_review'], ['seat_ux', 'door_review'], ['seat_ui', 'door_review'], ['seat_code', 'door_review'],
-    ['meet_sec', 'door_review'], ['meet_ux', 'door_review'], ['meet_ui', 'door_review'], ['meet_code', 'door_review'],
     ['door_release', 'in_release'], ['seat_approver', 'in_release'], ['door_lounge', 'in_lounge'],
     ['lounge_1', 'in_lounge'], ['lounge_2', 'in_lounge'], ['lounge_3', 'in_lounge'], ['lounge_4', 'in_lounge'],
     ['lounge_5', 'in_lounge'], ['lounge_6', 'in_lounge'], ['lounge_7', 'in_lounge'], ['lounge_8', 'in_lounge'],
@@ -80,9 +80,9 @@ export const LOUNGE_SPOTS = deepFreeze({
   'review-ux': 'lounge_5', 'review-ui': 'lounge_6', 'review-code': 'lounge_7', approver: 'lounge_8',
 });
 
-/** Meeting-table seat per reviewer, inside Review. */
+/** Reviewers in a meeting stay at their own pod desk. */
 export const MEETING_SEATS = deepFreeze({
-  'review-security': 'meet_sec', 'review-ux': 'meet_ux', 'review-ui': 'meet_ui', 'review-code': 'meet_code',
+  'review-security': 'seat_sec', 'review-ux': 'seat_ux', 'review-ui': 'seat_ui', 'review-code': 'seat_code',
 });
 
 /**
@@ -103,7 +103,7 @@ export const SPRITES = deepFreeze({
   chairWhite: rect(58, 41, 11, 22),
   chairGrey: rect(71, 41, 11, 22),
   desk: rect(85, 47, 26, 16),     // short orange desk
-  deskLong: rect(115, 47, 40, 16), // long orange table: the meeting table and the Lounge table
+  deskLong: rect(115, 47, 40, 16), // long orange table: the Lounge table
   sofaGrey: rect(119, 66, 33, 15), // grey sofa
   sofaBlue: rect(120, 83, 33, 16), // blue sofa
   sofaGreen: rect(120, 102, 33, 16), // green sofa
@@ -127,6 +127,19 @@ export const SPRITES = deepFreeze({
   calendar: rect(234, 81, 17, 11), // wall calendar grid
   papers: rect(183, 107, 6, 8),   // paper sheet, a wall prop that fits narrow wall segments
   flag: rect(207, 94, 12, 9),     // framed striped flag
+  cubicle: rect(171, 44, 79, 17), // grey cubicle back panel with a centre line, the Review pod
+  cubicleDeskL: rect(188, 63, 17, 19), // half desk with the border on its left side
+  cubicleDeskR: rect(213, 63, 17, 19), // half desk with the border on its right side
+  cubicleDivider: rect(207, 63, 4, 27), // thin divider between two half desks
+  flagB: rect(179, 94, 12, 9),    // framed flag (union jack)
+  flagC: rect(193, 94, 12, 9),    // framed flag (stars and stripes)
+  papersB: rect(192, 107, 6, 9),  // second paper sheet
+  mug: rect(169, 95, 8, 7),       // coffee mug
+  trinket: rect(211, 119, 11, 8), // small desk ornaments
+  windowB: rect(88, 96, 26, 21),  // second blue window, with a note on the glass
+  coffee: rect(159, 91, 7, 11),   // coffee machine
+  dog: rect(59, 146, 24, 11),     // orange dog
+  cat: rect(65, 129, 16, 13),     // black cat
 });
 
 /** Height of the wall strip at the top of each area, in map pixels. */
@@ -151,27 +164,37 @@ export const VERBS = deepFreeze({
 
 /** Static scenery: [sprite, x, y] of the top-left corner, in base-map pixels. Each room has its own set. */
 export const FURNITURE = deepFreeze([
-  // Research
+  // Research: a desk, plus the office dog and cat
   { sprite: 'chairOrange', x: 1, y: 34 }, { sprite: 'desk', x: 13, y: 40 }, { sprite: 'calendar', x: 16, y: 43 },
-  { sprite: 'papers', x: 33, y: 36 }, { sprite: 'plant', x: 62, y: 34 },
-  // Engineering
-  { sprite: 'plant', x: 90, y: 10 }, { sprite: 'desk', x: 86, y: 40 }, { sprite: 'pc', x: 100, y: 34 },
-  { sprite: 'chairBlue', x: 115, y: 34 }, { sprite: 'desk', x: 128, y: 40 }, { sprite: 'terminal', x: 154, y: 28 },
-  // Review
-  { sprite: 'deskLong', x: 176, y: 24 }, { sprite: 'shelf', x: 232, y: 20 },
-  { sprite: 'chairYellow', x: 180, y: 34 }, { sprite: 'chairWhite', x: 194, y: 34 },
-  { sprite: 'chairYellow', x: 208, y: 34 }, { sprite: 'chairWhite', x: 222, y: 34 },
+  { sprite: 'papers', x: 33, y: 36 }, { sprite: 'plant', x: 64, y: 22 },
+  { sprite: 'cat', x: 46, y: 28 }, { sprite: 'dog', x: 46, y: 46 },
+  // Engineering: a software workshop with two workstations and the Gate terminal
+  { sprite: 'plant', x: 86, y: 6 }, { sprite: 'cooler', x: 103, y: 7 }, { sprite: 'calendar', x: 146, y: 4 },
+  { sprite: 'chairBlue', x: 101, y: 26 }, { sprite: 'chairGreen', x: 127, y: 26 },
+  { sprite: 'desk', x: 85, y: 38 }, { sprite: 'desk', x: 112, y: 38 },
+  { sprite: 'pc', x: 86, y: 29 }, { sprite: 'pc', x: 112, y: 29 },
+  { sprite: 'terminal', x: 139, y: 19 }, { sprite: 'coffee', x: 144, y: 48 },
+  // Review: a cubicle pod, four half desks under one back panel
+  { sprite: 'windowB', x: 229, y: 0 }, { sprite: 'clock', x: 176, y: 6 }, { sprite: 'cubicle', x: 173, y: 20 },
+  { sprite: 'flagB', x: 182, y: 22 }, { sprite: 'flagC', x: 222, y: 22 },
+  { sprite: 'cubicleDivider', x: 191, y: 30 }, { sprite: 'cubicleDivider', x: 232, y: 30 },
+  { sprite: 'cubicleDeskL', x: 173, y: 36 }, { sprite: 'cubicleDeskR', x: 196, y: 36 },
+  { sprite: 'cubicleDeskL', x: 214, y: 36 }, { sprite: 'cubicleDeskR', x: 237, y: 36 },
+  { sprite: 'chairYellow', x: 176, y: 36 }, { sprite: 'chairWhite', x: 199, y: 36 },
+  { sprite: 'chairYellow', x: 217, y: 36 }, { sprite: 'chairWhite', x: 240, y: 36 },
+  { sprite: 'pc', x: 174, y: 29 }, { sprite: 'pc', x: 197, y: 29 }, { sprite: 'pc', x: 215, y: 29 }, { sprite: 'pc', x: 238, y: 29 },
   // Release
-  { sprite: 'flag', x: 60, y: 91 }, { sprite: 'desk', x: 10, y: 116 }, { sprite: 'printer', x: 28, y: 108 },
-  { sprite: 'chairGreen', x: 37, y: 110 }, { sprite: 'sofaBlue', x: 46, y: 132 }, { sprite: 'plant', x: 4, y: 138 },
+  { sprite: 'flag', x: 5, y: 92 }, { sprite: 'desk', x: 4, y: 114 }, { sprite: 'printer', x: 20, y: 106 },
+  { sprite: 'chairGreen', x: 31, y: 108 }, { sprite: 'sofaBlue', x: 6, y: 134 },
   // Escalation
-  { sprite: 'calendar', x: 110, y: 92 }, { sprite: 'sofaGrey', x: 100, y: 126 }, { sprite: 'binRed', x: 90, y: 138 },
+  { sprite: 'calendar', x: 66, y: 92 }, { sprite: 'sofaGrey', x: 56, y: 126 }, { sprite: 'binRed', x: 92, y: 138 },
   // Archive
   { sprite: 'shelf', x: 212, y: 82 }, { sprite: 'bin', x: 238, y: 108 }, { sprite: 'cooler', x: 214, y: 130 },
-  // Lounge: an outdoor terrace around a central table
-  { sprite: 'vending', x: 180, y: 88 }, { sprite: 'deskLong', x: 148, y: 124 },
-  { sprite: 'chairGrey', x: 150, y: 106 }, { sprite: 'chairGreen', x: 168, y: 106 },
-  { sprite: 'chairWhite', x: 150, y: 134 }, { sprite: 'chairYellow', x: 168, y: 134 },
+  // Lounge: an outdoor terrace around a central table, one chair beside each idle spot
+  { sprite: 'vending', x: 179, y: 74 }, { sprite: 'deskLong', x: 137, y: 113 },
+  { sprite: 'chairGrey', x: 147, y: 91 }, { sprite: 'chairGreen', x: 125, y: 98 }, { sprite: 'chairWhite', x: 168, y: 90 },
+  { sprite: 'chairYellow', x: 163, y: 138 }, { sprite: 'chairOrange', x: 141, y: 137 }, { sprite: 'chairBlue', x: 191, y: 115 },
+  { sprite: 'chairGrey', x: 121, y: 137 }, { sprite: 'chairGreen', x: 186, y: 137 },
 ]);
 
 const inside = (r, p) => p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h;
@@ -290,11 +313,11 @@ export function officeBackdrop(layout) {
   }
 }
 
-const LANDMARKS = { gate: ['terminal', 'engineering'], meeting: ['deskLong', 'review'], escalation: ['calendar', 'escalation'],
+const LANDMARKS = { gate: ['terminal', 'engineering'], meeting: ['cubicle', 'review'], escalation: ['calendar', 'escalation'],
   shelf: ['shelf', 'archive'], bin: ['bin', 'archive'] };
 
 /**
- * The special furniture the dashboard draws on: the Gate terminal (Engineering), the meeting table (Review), the
+ * The special furniture the dashboard draws on: the Gate terminal (Engineering), the meeting pod (Review), the
  * Escalation calendar, and the Archive shelf and bin. Each is the entry of `layout.furniture` with that sprite whose
  * center is inside that area, or null. Pure; never throws.
  */
@@ -312,6 +335,27 @@ export function officeLandmarks(layout) {
     return res;
   } catch {
     return { gate: null, meeting: null, escalation: null, shelf: null, bin: null };
+  }
+}
+
+/**
+ * Canvas rect `{ x, y, w, h }` of the short name tag of an idle `agent` standing at `node` (`{ x, y }` in map pixels),
+ * given the layout `scale` and the measured `textWidth` of the tag text. The tag sits over the character's torso.
+ * Pure; never throws; null when any input is not usable.
+ */
+export function idleTagBox(node, agent, scale, textWidth) {
+  try {
+    if (!isObject(node) || !Number.isFinite(node.x) || !Number.isFinite(node.y)) return null;
+    if (typeof agent !== 'string' || !Object.hasOwn(CHARACTER_FOR, agent)) return null;
+    if (!positiveInt(scale) || typeof textWidth !== 'number' || !Number.isFinite(textWidth) || textWidth < 0) return null;
+    const r = SPRITES[CHARACTER_FOR[agent]], w = textWidth + 8;
+    return {
+      x: Math.round((node.x - r.w / 2) * scale) + (r.w * scale) / 2 - w / 2,
+      y: Math.round((node.y - r.h) * scale) + 24,
+      w, h: 15,
+    };
+  } catch {
+    return null;
   }
 }
 
