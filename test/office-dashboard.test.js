@@ -75,3 +75,12 @@ test('AC-8: the dashboard uses officeLandmarks and paints floors, sky and partit
   assert.ok(!paint.includes('Math.random'));
   assert.match(paint, /globalAlpha = 0\.14/);
 });
+
+test('AC-8: idle tags come from idleTagBox and the meeting chip follows the landmark sprite', () => {
+  assert.match(script, /import\s*\{[^}]*\bidleTagBox\b[^}]*\}\s*from '\.\/office\.js'/);
+  const draw = script.slice(script.indexOf('function drawOffice'));
+  assert.ok(draw.includes('idleTagBox('));
+  assert.ok(!draw.includes('SPRITES.deskLong'));
+  assert.match(draw, /SPRITES\[marks\.meeting\.sprite\]/);
+  for (const n of ['mug', 'coffee', 'trinket', 'flag', 'flagB', 'flagC', 'papersB']) assert.match(script.match(/const ON_DESK = new Set\(\[.*\]\)/)[0], new RegExp(`'${n}'`));
+});
