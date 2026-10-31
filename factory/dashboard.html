@@ -125,13 +125,20 @@
   .pipeline-controls select { display: block; width: 100%; min-width: 0; margin-top: 2px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); }
   .pipeline-controls select:focus-visible, .pipeline-node:focus-visible, .pipeline-artifact:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .pipeline-layout select:disabled { opacity: .7; }
-  .pipeline-content { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(220px, .85fr); gap: 10px; min-height: 0; }
-  .pipeline-canvas { display: flex; align-items: flex-start; gap: 6px; overflow-x: auto; min-width: 0; padding: 4px 2px 10px; }
-  .pipeline-node { position: relative; display: grid; align-content: start; justify-items: center; gap: 5px; flex: 1 0 62px; min-width: 62px; padding: 8px 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); cursor: pointer; text-align: center; }
-  .pipeline-node:not(:last-child)::after { content: "→"; position: absolute; left: calc(100% + 1px); top: 18px; z-index: 1; color: var(--muted); }
-  .pipeline-node[data-state="complete"] { border-color: var(--pass); }
+  .pipeline-content { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(220px, .85fr); grid-template-rows: auto minmax(0, 1fr); gap: 8px 10px; min-height: 0; }
+  .pipeline-task-header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding: 6px 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .pipeline-task-title { min-width: 0; margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+  .pipeline-task-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+  .pipeline-chip { border-radius: 999px; padding: 2px 7px; background: var(--chip-bg); color: var(--ink); font-size: 11px; }
+  .pipeline-progress { display: flex; align-items: center; gap: 7px; min-width: 120px; color: var(--muted); font-size: 11px; }
+  .pipeline-progress progress { width: 72px; height: 8px; accent-color: var(--done); }
+  .pipeline-canvas { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; min-width: 0; padding: 4px 2px 10px; }
+  .pipeline-node { position: relative; display: grid; align-content: center; justify-items: center; gap: 5px; flex: 1 0 66px; min-width: 66px; padding: 9px 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); cursor: pointer; text-align: center; }
+  .pipeline-node:not(:last-child)::after { content: "›"; position: absolute; left: calc(100% + 1px); top: 50%; transform: translateY(-50%); z-index: 1; color: var(--muted); font-size: 20px; }
+  .pipeline-node[data-state="complete"] { border-color: var(--pass); background: color-mix(in srgb, var(--pass-bg) 65%, var(--panel)); }
   .pipeline-node[data-state="active"] { border-color: var(--active); box-shadow: inset 0 0 0 1px var(--active); }
-  .pipeline-node[data-state="blocked"] { border-color: var(--alert); }
+  .pipeline-node[data-state="blocked"] { border-color: var(--alert); background: color-mix(in srgb, var(--alert-bg) 65%, var(--panel)); }
+  .pipeline-node[data-state="pending"] { opacity: .72; }
   .pipeline-node[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--focus); }
   .pipeline-node-label { font-weight: 700; }
   .pipeline-node-state { color: var(--muted); font-size: 11px; }
@@ -420,6 +427,7 @@
         <label><span id="pipeline-stage-label">Stage</span><select id="pipeline-stage" aria-label="Select pipeline stage"></select></label>
       </div>
       <div class="pipeline-content">
+        <header class="pipeline-task-header" id="pipeline-task-header" aria-live="polite"></header>
         <div class="pipeline-canvas" id="pipeline-canvas" aria-label="Pipeline stages"></div>
         <section class="pipeline-inspector" id="pipeline-inspector" aria-live="polite"></section>
       </div>
@@ -540,7 +548,7 @@
     "pipelineActive": "Active", "pipelinePending": "Pending", "pipelineComplete": "Complete", "pipelineBlocked": "Blocked", "pipelineStagesSuffix": "stages",
     "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
     "pipelineStageNeedsHuman": "Needs human", "pipelineStageNeedsInfo": "Needs info", "pipelineStageAwaitingMerge": "Awaiting merge", "pipelineStageMerging": "Merging", "pipelineStageMerged": "Merged", "pipelineStageRejected": "Rejected",
-    "pipelineIssue": "Issue", "pipelineStatus": "Status", "pipelineProgress": "Progress", "pipelineDuration": "Duration", "pipelineCost": "Cost", "pipelineAgent": "Agent / model", "pipelineRound": "Round", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Note", "pipelineArtifacts": "Job artifacts", "pipelineGithubUnavailable": "GitHub links not available",
+    "pipelineTitle": "Task", "pipelineProvider": "Provider", "pipelineIssue": "Issue", "pipelineStatus": "Status", "pipelineProgress": "Progress", "pipelineDuration": "Duration", "pipelineCost": "Cost", "pipelineAgent": "Agent / model", "pipelineRound": "Round", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Note", "pipelineArtifacts": "Job artifacts", "pipelineGithubUnavailable": "GitHub links not available",
     "hintNeedsHumanPr": "merge the PR to approve, or rework it:",
     "hintNeedsHumanNoPr": "no PR yet: fix the cause, then resume it:",
     "hintAwaitingMerge": "waiting for a reviewer to merge the PR",
@@ -573,7 +581,7 @@
     "pipelineActive": "Activa", "pipelinePending": "Pendiente", "pipelineComplete": "Completada", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
     "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
     "pipelineStageNeedsHuman": "Necesita intervención humana", "pipelineStageNeedsInfo": "Falta información", "pipelineStageAwaitingMerge": "Esperando merge", "pipelineStageMerging": "En proceso de merge", "pipelineStageMerged": "Integrado", "pipelineStageRejected": "Rechazado",
-    "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progreso", "pipelineDuration": "Duración", "pipelineCost": "Costo", "pipelineAgent": "Agente / modelo", "pipelineRound": "Ronda", "pipelineReviewers": "Reviewers", "pipelineBranch": "Rama", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefactos del job", "pipelineGithubUnavailable": "Enlaces de GitHub no disponibles",
+    "pipelineTitle": "Tarea", "pipelineProvider": "Proveedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progreso", "pipelineDuration": "Duración", "pipelineCost": "Costo", "pipelineAgent": "Agente / modelo", "pipelineRound": "Ronda", "pipelineReviewers": "Reviewers", "pipelineBranch": "Rama", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefactos del job", "pipelineGithubUnavailable": "Enlaces de GitHub no disponibles",
     "hintNeedsHumanPr": "hacé merge del PR para aprobar, o pedí un rework:",
     "hintNeedsHumanNoPr": "todavía no hay PR: corregí la causa y reanudá el job:",
     "hintAwaitingMerge": "esperando que una persona haga merge del PR",
@@ -606,7 +614,7 @@
     "pipelineActive": "Ativa", "pipelinePending": "Pendente", "pipelineComplete": "Concluída", "pipelineBlocked": "Bloqueada", "pipelineStagesSuffix": "etapas",
     "stageIntake": "Intake", "stageSpec": "Spec", "stageBuild": "Build", "stageGate": "Gate", "stageReview": "Review", "stageApprove": "Approve", "stageMerge": "Merge",
     "pipelineStageNeedsHuman": "Precisa de intervenção humana", "pipelineStageNeedsInfo": "Falta informação", "pipelineStageAwaitingMerge": "Aguardando merge", "pipelineStageMerging": "Em processo de merge", "pipelineStageMerged": "Integrado", "pipelineStageRejected": "Rejeitado",
-    "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progresso", "pipelineDuration": "Duração", "pipelineCost": "Custo", "pipelineAgent": "Agente / modelo", "pipelineRound": "Rodada", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefatos do job", "pipelineGithubUnavailable": "Links do GitHub indisponíveis",
+    "pipelineTitle": "Tarefa", "pipelineProvider": "Provedor", "pipelineIssue": "Issue", "pipelineStatus": "Estado", "pipelineProgress": "Progresso", "pipelineDuration": "Duração", "pipelineCost": "Custo", "pipelineAgent": "Agente / modelo", "pipelineRound": "Rodada", "pipelineReviewers": "Reviewers", "pipelineBranch": "Branch", "pipelinePr": "PR", "pipelineNote": "Nota", "pipelineArtifacts": "Artefatos do job", "pipelineGithubUnavailable": "Links do GitHub indisponíveis",
     "hintNeedsHumanPr": "faça o merge do PR para aprovar, ou peça um rework:",
     "hintNeedsHumanNoPr": "ainda não há PR: corrija a causa e retome o job:",
     "hintAwaitingMerge": "aguardando uma pessoa fazer o merge do PR",
@@ -779,6 +787,7 @@ function renderPipeline() {
   const stageSelect = $('pipeline-stage');
   const stageLabel = (stage) => T[`stage${stage.key[0].toUpperCase()}${stage.key.slice(1)}`] || stage.label;
   const stateLabel = (state) => T[`pipeline${state[0].toUpperCase()}${state.slice(1)}`] || state;
+  const taskHeader = $('pipeline-task-header');
   stageSelect.innerHTML = CANVAS_STAGES.map((stage) => `<option value="${stage.key}">${escapeHTML(stageLabel(stage))}</option>`).join('');
   stageSelect.value = CANVAS_STAGES.some((stage) => stage.key === selectedStage) ? selectedStage : 'intake';
   stageSelect.disabled = !selectedJob;
@@ -786,6 +795,7 @@ function renderPipeline() {
   $('pipeline-canvas').innerHTML = stages.map((stage) => `<button type="button" class="pipeline-node" data-stage="${stage.key}" data-state="${stage.state}" aria-pressed="${stage.key === stageSelect.value}" aria-label="${escapeHTML(stageLabel(stage))}: ${escapeHTML(stateLabel(stage.state))}">
     <span class="pipeline-node-label">${escapeHTML(stageLabel(stage))}</span><span class="pipeline-node-state">${escapeHTML(stateLabel(stage.state))}</span></button>`).join('');
   if (!selectedJob) {
+    taskHeader.innerHTML = `<h3 class="pipeline-task-title">${escapeHTML(T.pipelineNoJobs)}</h3>`;
     $('pipeline-inspector').innerHTML = `<p class="pipeline-missing">${escapeHTML(T.pipelineNoJobs)}</p>`;
     return;
   }
@@ -794,8 +804,12 @@ function renderPipeline() {
   const localizedProgress = details.progress.replace(/ stages$/, ` ${T.pipelineStagesSuffix}`).replace('Not available', T.pipelineUnavailable);
   const stageValueKey = `pipelineStage${details.stage.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join('')}`;
   const stageValue = T[stageValueKey] || details.stage;
+  const percent = Math.round((Number.parseInt(details.progress, 10) / CANVAS_STAGES.length) * 100);
+  taskHeader.innerHTML = `<h3 class="pipeline-task-title">${escapeHTML(details.title === 'Not available' ? selectedJob.id : details.title)}${details.issue !== 'Not available' ? ` · ${escapeHTML(details.issue)}` : ''}</h3>
+    <div class="pipeline-task-meta"><span class="pipeline-chip">${escapeHTML(details.provider)}</span><span class="pipeline-chip">${escapeHTML(details.status)}</span><span class="pipeline-chip">${escapeHTML(T.pipelineRound)} ${escapeHTML(details.round)}</span>
+    <span class="pipeline-progress"><progress max="100" value="${percent}" aria-label="${escapeHTML(T.pipelineProgress)}"></progress>${escapeHTML(localizedProgress)}</span></div>`;
   const fields = [[T.pipelineIssue, details.issue], [T.pipelineStage, stageValue], [T.pipelineStatus, localizedStatus], [T.pipelineProgress, localizedProgress],
-    [T.pipelineDuration, details.duration], [T.pipelineCost, details.cost], [T.pipelineAgent, details.agent], [T.pipelineRound, details.round],
+    [T.pipelineTitle, details.title], [T.pipelineProvider, details.provider], [T.pipelineDuration, details.duration], [T.pipelineCost, details.cost], [T.pipelineAgent, details.agent], [T.pipelineRound, details.round],
     [T.pipelineReviewers, details.reviewers], [T.pipelineBranch, details.branch], [T.pipelinePr, details.pr], [T.pipelineNote, details.note]]
     .map(([label, value]) => [label, value === 'Not available' ? T.pipelineUnavailable : value]);
   const links = githubLinks(selectedJob, board.repo);

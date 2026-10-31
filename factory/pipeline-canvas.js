@@ -64,10 +64,10 @@ export function stageDetails(job, stageKey, now = Date.now(), text) {
   const current = pipeline.find((item) => item.key === selected.key);
   const completed = pipeline.filter((item) => item.state === 'complete').length;
   const start = typeof source.started === 'string' ? Date.parse(source.started) : NaN;
-  const end = typeof source.finished === 'string' ? Date.parse(source.finished) : Number(now);
+  const end = typeof source.finished === 'string' ? Date.parse(source.finished) : NaN;
   const elapsed = Number.isFinite(start) && Number.isFinite(end) && end >= start ? `${Math.floor((end - start) / 60000)}m` : DASH;
   const label = costLabel(source, text);
-  const cost = label === '—' ? DASH : label;
+  const cost = label === '—' ? (text?.costUnavailable || 'Cost unavailable') : label;
   const issue = Number.isInteger(source.issue) && source.issue > 0 ? `#${source.issue}` : DASH;
   const pr = Number.isInteger(source.pr) && source.pr > 0 ? `#${source.pr}` : DASH;
   const agentKey = STAGE_AGENTS[selected.key];
@@ -81,7 +81,7 @@ export function stageDetails(job, stageKey, now = Date.now(), text) {
     : DASH;
   return {
     key: selected.key, label: selected.label, status: current.state[0].toUpperCase() + current.state.slice(1),
-    issue, stage: display(source.stage), progress: `${completed}/${CANVAS_STAGES.length} stages`,
+    issue, title: display(source.title), provider: display(source.provider), stage: display(source.stage), progress: `${completed}/${CANVAS_STAGES.length} stages`,
     duration: elapsed, cost, agent, round: number(source.round) && source.round > 0 ? String(source.round) : DASH,
     reviewers, branch: display(source.branch), pr, note: display(source.note),
   };
