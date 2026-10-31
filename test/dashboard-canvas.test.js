@@ -83,14 +83,27 @@ test('AC-2: keyboard job and stage changes render matching context and focus the
 });
 
 test('AC-3: inspector fields expose available context and explicit missing values', () => {
-  const job = { issue: 41, stage: 'build', round: 2, cost_usd: 1.25, branch: 'factory/job-a', agents: { builder: 'gpt' }, reviewers: ['code'], note: 'working' };
+  const job = { issue: 41, title: 'Task Alpha', stage: 'build', provider: 'codex', models: { builder: 'gpt' }, round: 2, cost_usd: 1.25, cost_status: 'available', branch: 'factory/job-a', agents: { builder: 'gpt' }, reviewers: ['code'], note: 'working', started: '2026-01-01T00:00:00Z', finished: '2026-01-01T00:05:00Z' };
   const details = stageDetails(job, 'build');
   assert.equal(details.issue, '#41');
+  assert.equal(details.provider, 'codex');
+  assert.equal(details.title, 'Task Alpha');
   assert.equal(details.round, '2');
   assert.equal(details.cost, '$1.25');
   assert.equal(details.branch, 'factory/job-a');
+  assert.equal(details.duration, '5m');
   const missing = stageDetails({}, 'intake');
-  for (const key of ['issue', 'duration', 'cost', 'round', 'branch', 'pr', 'note']) assert.equal(missing[key], 'Not available', key);
+  for (const key of ['issue', 'provider', 'duration', 'round', 'branch', 'pr', 'note']) assert.equal(missing[key], 'Not available', key);
+  assert.equal(missing.cost, 'Cost unavailable');
+  assert.equal(stageDetails({ started: '2026-01-01T00:00:00Z' }, 'build', Date.parse('2026-01-01T00:10:00Z')).duration, 'Not available');
+});
+
+test('AC-3: canvas renders selected task identity, provider and seven-stage progress', () => {
+  assert.match(html, /pipeline-task-header/);
+  assert.match(html, /pipeline-progress/);
+  assert.match(html, /pipelineProvider/);
+  assert.match(html, /pipelineTitle/);
+  assert.match(html, /Cost unavailable/);
 });
 
 test('AC-4: artifact allowlist and GitHub links reject arbitrary paths and URLs', () => {
